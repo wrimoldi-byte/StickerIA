@@ -32,12 +32,12 @@ class MainActivity : Activity() {
   source=Spinner(this);source.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,names)
   root.addView(source,LinearLayout.LayoutParams(-1,46))
   val actions=LinearLayout(this).apply{orientation=0}
-  actions.addView(Button(this).apply{text="Buscar";setAllCaps=false;setOnClickListener{search()}},LinearLayout.LayoutParams(0,52,1f))
-  actions.addView(Button(this).apply{text="Mi galería";setAllCaps=false;setOnClickListener{startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply{type="image/*"},17)}},LinearLayout.LayoutParams(0,52,1f))
+  actions.addView(Button(this).apply{text="Buscar";isAllCaps=false;setOnClickListener{search()}},LinearLayout.LayoutParams(0,52,1f))
+  actions.addView(Button(this).apply{text="Mi galería";isAllCaps=false;setOnClickListener{startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply{type="image/*"},17)}},LinearLayout.LayoutParams(0,52,1f))
   root.addView(actions)
-  root.addView(Button(this).apply{text="Agregar mi paquete a WhatsApp";setAllCaps=false;setTextColor(Color.WHITE);setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(21,151,102)));setOnClickListener{installPack()}},LinearLayout.LayoutParams(-1,52))
+  root.addView(Button(this).apply{text="Agregar mi paquete a WhatsApp";isAllCaps=false;setTextColor(Color.WHITE);setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(21,151,102)));setOnClickListener{installPack()}},LinearLayout.LayoutParams(-1,52))
   root.addView(TextView(this).apply{text="Telegram";textSize=13f;setTextColor(Color.rgb(94,106,128));setPadding(4,8,0,0)})
-  root.addView(Button(this).apply{text="Configurar acceso a Telegram";setAllCaps=false;setOnClickListener{configToken()}},LinearLayout.LayoutParams(-1,46))
+  root.addView(Button(this).apply{text="Configurar acceso a Telegram";isAllCaps=false;setOnClickListener{configToken()}},LinearLayout.LayoutParams(-1,46))
   info=TextView(this).apply{text="Elegí una fuente y buscá.";textSize=13f;setTextColor(Color.rgb(64,76,100));setPadding(4,8,4,8)}
   root.addView(info)
   val scroll=ScrollView(this);list=LinearLayout(this).apply{orientation=1};scroll.addView(list);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
@@ -99,7 +99,7 @@ class MainActivity : Activity() {
      }else{
       info.text="${found.size} paquetes encontrados en la web. Elegí uno para importar."
       found.forEach{name->
-       val btn=Button(this).apply{text="📦 "+name.replace("_"," ");setAllCaps=false;setOnClickListener{list.removeAllViews();telegram("https://t.me/addstickers/"+name)}}
+       val btn=Button(this).apply{text="📦 "+name.replace("_"," ");isAllCaps=false;setOnClickListener{list.removeAllViews();telegram("https://t.me/addstickers/"+name)}}
        list.addView(btn)
       }
      }
