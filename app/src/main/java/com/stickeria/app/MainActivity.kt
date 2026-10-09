@@ -18,27 +18,39 @@ class MainActivity : Activity() {
  private lateinit var info:TextView
  private lateinit var query:EditText
  private lateinit var source:Spinner
- private val names=arrayOf("Todas (Wikimedia + Openverse + OpenMoji)","Wikimedia Commons","Openverse","OpenMoji (emojis)","Telegram (enlace de pack)")
+ private val names=arrayOf("Todas (Wikimedia + Openverse + OpenMoji)","Wikimedia Commons","Openverse","OpenMoji (emojis)","Telegram (packs públicos)")
  private data class Item(val title:String,val thumb:String,val url:String,val origin:String)
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
   window.statusBarColor=Color.rgb(20,27,48)
   window.navigationBarColor=Color.rgb(20,27,48)
-  val root=LinearLayout(this).apply{orientation=1;setPadding(16,12,16,8);setBackgroundColor(Color.rgb(245,247,251))}
-  root.addView(TextView(this).apply{text="StickerIA";textSize=27f;setTypeface(null,1);setTextColor(Color.rgb(24,34,62));setPadding(4,4,4,0)})
-  root.addView(TextView(this).apply{text="Encontrá stickers y agregalos a WhatsApp";textSize=13f;setTextColor(Color.rgb(94,106,128));setPadding(4,0,4,10)})
-  query=EditText(this).apply{hint="Buscar stickers o pegar enlace de Telegram";setSingleLine(true);textSize=16f;setPadding(16,4,16,4);setBackgroundColor(Color.WHITE)}
-  root.addView(query,LinearLayout.LayoutParams(-1,52))
+  fun dp(n:Int)=(n*resources.displayMetrics.density).toInt()
+  fun shape(color:Int,radius:Int=14):android.graphics.drawable.GradientDrawable =
+   android.graphics.drawable.GradientDrawable().apply{setColor(color);cornerRadius=dp(radius).toFloat()}
+  fun action(label:String,color:Int,onTap:()->Unit):TextView=TextView(this).apply{
+   text=label;textSize=15f;setTypeface(null,1);gravity=Gravity.CENTER
+   setTextColor(Color.WHITE);background=shape(color)
+   setOnClickListener{onTap()}
+  }
+  val root=LinearLayout(this).apply{orientation=1;setPadding(dp(18),dp(12),dp(18),dp(8));setBackgroundColor(Color.rgb(245,247,251))}
+  root.addView(TextView(this).apply{text="✦ StickerIA";textSize=27f;setTypeface(null,1);setTextColor(Color.rgb(24,34,62))})
+  root.addView(TextView(this).apply{text="Buscá, creá y compartí stickers";textSize=14f;setTextColor(Color.rgb(94,106,128));setPadding(0,0,0,dp(14))})
+  query=EditText(this).apply{hint="Ej: perro, memes, gatos…";setSingleLine(true);textSize=17f;setPadding(dp(14),0,dp(14),0);background=shape(Color.WHITE);setTextColor(Color.rgb(30,40,60));setHintTextColor(Color.GRAY)}
+  root.addView(query,LinearLayout.LayoutParams(-1,dp(52)))
+  root.addView(TextView(this).apply{text="FUENTE DE IMÁGENES";textSize=11f;setTextColor(Color.rgb(96,110,130));setPadding(0,dp(14),0,dp(4))})
   source=Spinner(this);source.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,names)
-  root.addView(source,LinearLayout.LayoutParams(-1,46))
-  val actions=LinearLayout(this).apply{orientation=0}
-  actions.addView(Button(this).apply{text="Buscar";isAllCaps=false;setOnClickListener{search()}},LinearLayout.LayoutParams(0,52,1f))
-  actions.addView(Button(this).apply{text="Mi galería";isAllCaps=false;setOnClickListener{startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply{type="image/*"},17)}},LinearLayout.LayoutParams(0,52,1f))
+  root.addView(source,LinearLayout.LayoutParams(-1,dp(50)))
+  val actions=LinearLayout(this).apply{orientation=0;setPadding(0,dp(8),0,0)}
+  actions.addView(action("🔎 Buscar",Color.rgb(34,87,177)){search()},LinearLayout.LayoutParams(0,dp(50),1f))
+  actions.addView(action("＋ Mi galería",Color.rgb(62,76,102)){startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply{type="image/*"},17)},LinearLayout.LayoutParams(0,dp(50),1f).apply{leftMargin=dp(8)})
   root.addView(actions)
-  root.addView(Button(this).apply{text="Agregar mi paquete a WhatsApp";isAllCaps=false;setTextColor(Color.WHITE);setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(21,151,102)));setOnClickListener{installPack()}},LinearLayout.LayoutParams(-1,52))
-  root.addView(TextView(this).apply{text="Telegram";textSize=13f;setTextColor(Color.rgb(94,106,128));setPadding(4,8,0,0)})
-  root.addView(Button(this).apply{text="Configurar acceso a Telegram";isAllCaps=false;setOnClickListener{configToken()}},LinearLayout.LayoutParams(-1,46))
-  info=TextView(this).apply{text="Elegí una fuente y buscá.";textSize=13f;setTextColor(Color.rgb(64,76,100));setPadding(4,8,4,8)}
+  root.addView(action("Agregar paquete a WhatsApp",Color.rgb(20,145,94)){installPack()},LinearLayout.LayoutParams(-1,dp(52)).apply{topMargin=dp(12)})
+  root.addView(TextView(this).apply{text="TELEGRAM";textSize=11f;setTextColor(Color.rgb(96,110,130));setPadding(0,dp(16),0,dp(6))})
+  val tg=LinearLayout(this).apply{orientation=0}
+  tg.addView(action("Buscar packs",Color.rgb(42,131,190)){val q=query.text.toString().trim();if(q.isNotBlank()){list.removeAllViews();discoverTelegram(q)}else info.text="Escribí qué stickers querés buscar"},LinearLayout.LayoutParams(0,dp(46),1f))
+  tg.addView(action("⚙ Token",Color.rgb(87,100,120)){configToken()},LinearLayout.LayoutParams(0,dp(46),1f).apply{leftMargin=dp(8)})
+  root.addView(tg)
+  info=TextView(this).apply{text="Escribí algo y tocá Buscar.";textSize=13f;setTextColor(Color.rgb(64,76,100));setPadding(0,dp(16),0,dp(12))}
   root.addView(info)
   val scroll=ScrollView(this);list=LinearLayout(this).apply{orientation=1};scroll.addView(list);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
   setContentView(root)
