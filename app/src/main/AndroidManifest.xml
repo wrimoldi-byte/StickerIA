@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <queries><package android:name="com.whatsapp"/></queries>
     <application android:label="StickerIA" android:usesCleartextTraffic="false" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <provider android:name=".StickerProvider" android:authorities="com.stickeria.app.stickers" android:exported="true" android:grantUriPermissions="true" android:readPermission="com.whatsapp.sticker.READ"/>
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
         </activity>
