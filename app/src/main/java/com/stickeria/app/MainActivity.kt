@@ -1,192 +1,117 @@
 package com.stickeria.app
 
-import android.app.Activity
-import android.os.Bundle
-import android.graphics.BitmapFactory
-import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
-import android.os.Handler
-import android.os.Looper
-import android.view.Gravity
-import android.view.View
-import android.widget.*
+import android.app.*
+import android.os.*
+import android.content.*
+import android.graphics.*
 import android.net.Uri
-import android.content.Intent
+import android.provider.MediaStore
+import android.view.*
+import android.widget.*
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
-import java.net.URLEncoder
-import java.io.File
+import java.net.*
+import java.io.*
 
 class MainActivity : Activity() {
-    private val main = Handler(Looper.getMainLooper())
-    private lateinit var grid: LinearLayout
-    private lateinit var status: TextView
-    private lateinit var search: EditText
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.rgb(248, 249, 253))
-            setPadding(22, 35, 22, 12)
-        }
-        val title = TextView(this).apply {
-            text = "✨ StickerIA"
-            textSize = 29f
-            setTypeface(null, Typeface.BOLD)
-            setTextColor(Color.rgb(34, 38, 65))
-        }
-        root.addView(title)
-        root.addView(TextView(this).apply {
-            text = "Buscá imágenes para stickers sin salir de la app"
-            textSize = 14f
-            setPadding(0, 8, 0, 16)
-        })
-        search = EditText(this).apply {
-            hint = "Gatos, memes, corazones..."
-            setSingleLine(true)
-        }
-        root.addView(search)
-        val button = Button(this).apply {
-            text = "Buscar stickers"
-            setOnClickListener { searchImages(search.text.toString()) }
-        }
-        root.addView(button)
-        root.addView(TextView(this).apply {
-            text = "Fuente actual: Wikimedia Commons · Imágenes con licencias identificables"
-            textSize = 12f
-        })
-        status = TextView(this).apply {
-            text = "Escribí una búsqueda para empezar."
-            setPadding(0, 16, 0, 12)
-            textSize = 14f
-        }
-        root.addView(status)
-        val scroll = ScrollView(this)
-        grid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        scroll.addView(grid)
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        setContentView(root)
-    }
-
-    private fun searchImages(query: String) {
-        if (query.isBlank()) {
-            status.text = "Escribí una palabra primero."
-            return
-        }
-        status.text = "Buscando resultados..."
-        grid.removeAllViews()
-        Thread {
-            try {
-                val encoded = URLEncoder.encode(query + " sticker", "UTF-8")
-                val api = "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=" +
-                    encoded + "&gsrnamespace=6&gsrlimit=24&prop=imageinfo&iiprop=url%7Cextmetadata&iiurlwidth=320&format=json"
-                val data = request(api)
-                val pages = JSONObject(data).optJSONObject("query")?.optJSONObject("pages")
-                val results = mutableListOf<Triple<String,String,String>>()
-                if (pages != null) {
-                    val keys = pages.keys()
-                    while (keys.hasNext()) {
-                        val page = pages.getJSONObject(keys.next())
-                        val image = page.optJSONArray("imageinfo")?.optJSONObject(0) ?: continue
-                        val original = image.optString("url")
-                        val thumb = image.optString("thumburl", original)
-                        val name = page.optString("title").removePrefix("File:")
-                        if (original.startsWith("https://") && thumb.startsWith("https://")) {
-                            results.add(Triple(name, thumb, original))
-                        }
-                    }
-                }
-                main.post {
-                    status.text = if (results.isEmpty()) "No encontramos resultados. Probá con otra palabra." else "${results.size} resultados. Tocá una imagen para verla o guardarla."
-                    results.forEach { addResult(it.first, it.second, it.third) }
-                }
-            } catch (e: Exception) {
-                main.post { status.text = "No se pudo completar la búsqueda: ${e.message ?: "sin conexión"}" }
-            }
-        }.start()
-    }
-
-    private fun addResult(name: String, thumbnail: String, original: String) {
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(16, 14, 16, 14)
-            background = GradientDrawable().apply {
-                setColor(Color.WHITE)
-                cornerRadius = 22f
-                setStroke(1, Color.rgb(223, 226, 232))
-            }
-        }
-        val imageView = ImageView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(-1, 230)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            contentDescription = name
-        }
-        card.addView(imageView)
-        card.addView(TextView(this).apply {
-            text = name
-            maxLines = 2
-            textSize = 14f
-            setPadding(0, 6, 0, 8)
-        })
-        val actions = LinearLayout(this).apply { gravity = Gravity.CENTER_HORIZONTAL }
-        actions.addView(Button(this).apply {
-            text = "Ver fuente"
-            setOnClickListener { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://commons.wikimedia.org/wiki/Special:FilePath/" + Uri.encode(name)))) }
-        })
-        actions.addView(Button(this).apply {
-            text = "Guardar"
-            setOnClickListener { saveImage(original) }
-        })
-        card.addView(actions)
-        grid.addView(card, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 14 })
-        Thread {
-            try {
-                val conn = URL(thumbnail).openConnection() as HttpURLConnection
-                conn.connectTimeout = 12000
-                conn.readTimeout = 12000
-                conn.setRequestProperty("User-Agent", "StickerIA-MVP/0.2 (Android; educational prototype)")
-                conn.inputStream.use { stream ->
-                    val bitmap = BitmapFactory.decodeStream(stream)
-                    main.post { imageView.setImageBitmap(bitmap) }
-                }
-                conn.disconnect()
-            } catch (_: Exception) {}
-        }.start()
-    }
-
-    private fun saveImage(url: String) {
-        status.text = "Guardando imagen..."
-        Thread {
-            try {
-                val extension = when {
-                    url.contains(".png", true) -> ".png"
-                    url.contains(".webp", true) -> ".webp"
-                    url.contains(".gif", true) -> ".gif"
-                    else -> ".jpg"
-                }
-                val file = File(filesDir, "sticker_" + System.currentTimeMillis() + extension)
-                val conn = URL(url).openConnection() as HttpURLConnection
-                conn.connectTimeout = 15000
-                conn.readTimeout = 20000
-                conn.setRequestProperty("User-Agent", "StickerIA-MVP/0.2 (Android; educational prototype)")
-                if (conn.contentLengthLong > 8_000_000L) throw IllegalArgumentException("Imagen demasiado grande")
-                conn.inputStream.use { input -> file.outputStream().use { output -> input.copyTo(output) } }
-                conn.disconnect()
-                main.post { status.text = "Imagen guardada dentro de StickerIA. La exportación a WhatsApp llegará en una próxima versión." }
-            } catch (e: Exception) {
-                main.post { status.text = "No se pudo guardar: ${e.message}" }
-            }
-        }.start()
-    }
-
-    private fun request(url: String): String {
-        val conn = URL(url).openConnection() as HttpURLConnection
-        conn.connectTimeout = 15000
-        conn.readTimeout = 20000
-        conn.setRequestProperty("User-Agent", "StickerIA-MVP/0.2 (Android; educational prototype)")
-        return try { conn.inputStream.bufferedReader().use { it.readText() } } finally { conn.disconnect() }
-    }
+ private val ui=Handler(Looper.getMainLooper())
+ private lateinit var list:LinearLayout
+ private lateinit var info:TextView
+ private lateinit var query:EditText
+ private lateinit var source:Spinner
+ private val names=arrayOf("Todas (Wikimedia + Openverse)","Wikimedia Commons","Openverse","Telegram (enlace de pack)")
+ private data class Item(val title:String,val thumb:String,val url:String,val origin:String)
+ override fun onCreate(savedInstanceState:Bundle?){
+  super.onCreate(savedInstanceState)
+  val root=LinearLayout(this).apply{orientation=1;setPadding(22,30,22,10);setBackgroundColor(Color.rgb(246,247,252))}
+  root.addView(TextView(this).apply{text="✨ StickerIA 0.3";textSize=28f;setTextColor(Color.rgb(30,34,60))})
+  root.addView(TextView(this).apply{text="Buscá imágenes, importá stickers y convertí a WebP para WhatsApp";textSize=13f})
+  query=EditText(this).apply{hint="Memes, gatos o t.me/addstickers/...";setSingleLine(true)}
+  root.addView(query)
+  source=Spinner(this);source.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,names);root.addView(source)
+  root.addView(Button(this).apply{text="🔎 Buscar / importar";setOnClickListener{search()}})
+  root.addView(Button(this).apply{text="📷 Crear sticker desde mi galería";setOnClickListener{
+   startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply{type="image/*"},17)
+  }})
+  root.addView(Button(this).apply{text="⚙ Configurar token de bot Telegram";setOnClickListener{configToken()}})
+  info=TextView(this).apply{text="Elegí una fuente y buscá.";setPadding(0,12,0,12)}
+  root.addView(info)
+  val scroll=ScrollView(this);list=LinearLayout(this).apply{orientation=1};scroll.addView(list);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
+  setContentView(root)
+ }
+ private fun configToken(){
+  val field=EditText(this).apply{hint="Token de @BotFather";setSingleLine(true)}
+  AlertDialog.Builder(this).setTitle("Telegram Bot API").setMessage("El token se guarda solo en este teléfono. No lo compartas ni lo subas a GitHub.").setView(field).setPositiveButton("Guardar"){_,_->getPreferences(0).edit().putString("token",field.text.toString().trim()).apply();info.text="Token guardado localmente"}.setNegativeButton("Cancelar",null).show()
+ }
+ private fun search(){
+  val q=query.text.toString().trim();if(q.isBlank()){info.text="Escribí algo para buscar";return}
+  list.removeAllViews();info.text="Buscando…"
+  val mode=source.selectedItemPosition
+  if(mode==3 || q.contains("t.me/addstickers/")){telegram(q);return}
+  Thread{
+   val results=mutableListOf<Item>();val errors=mutableListOf<String>()
+   if(mode==0||mode==1)try{
+    val u="https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch="+enc(q)+"&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url&iiurlwidth=320&format=json"
+    val pages=JSONObject(fetch(u)).optJSONObject("query")?.optJSONObject("pages")
+    if(pages!=null){val it=pages.keys();while(it.hasNext()){val page=pages.getJSONObject(it.next());val im=page.optJSONArray("imageinfo")?.optJSONObject(0)?:continue;val original=im.optString("url");if(original.startsWith("https://")&&original.matches(Regex("(?i).*\\.(png|jpe?g|webp)(\\?.*)?$")))results.add(Item(page.optString("title").removePrefix("File:"),im.optString("thumburl",original),original,"Wikimedia"))}}
+   }catch(e:Exception){errors.add("Wikimedia: ${e.message}")}
+   if(mode==0||mode==2)try{
+    val j=JSONObject(fetch("https://api.openverse.org/v1/images/?q="+enc(q)+"&page_size=20"))
+    val a=j.optJSONArray("results")
+    if(a!=null)for(i in 0 until a.length()){val x=a.getJSONObject(i);val u=x.optString("url");if(u.startsWith("https://"))results.add(Item(x.optString("title","Imagen"),x.optString("thumbnail",u),u,"Openverse · ${x.optString("license")}"))}
+   }catch(e:Exception){errors.add("Openverse: ${e.message}")}
+   ui.post{info.text="${results.size} resultados"+if(errors.isNotEmpty())" · "+errors.joinToString("; ") else "";results.forEach{add(it)}}
+  }.start()
+ }
+ private fun telegram(q:String){
+  val token=getPreferences(0).getString("token","")?:""
+  if(token.isBlank()){info.text="Configurá primero tu token de bot Telegram (@BotFather).";return}
+  val name=q.substringAfter("addstickers/",q).substringBefore("?").substringBefore("/").trim()
+  if(!name.matches(Regex("[A-Za-z0-9_]{1,100}"))){info.text="Pegá un enlace válido t.me/addstickers/Nombre";return}
+  Thread{try{
+   val base="https://api.telegram.org/bot"+token+"/"
+   val response=JSONObject(fetch(base+"getStickerSet?name="+enc(name)))
+   if(!response.optBoolean("ok"))throw Exception(response.optString("description"))
+   val pack=response.getJSONObject("result");val stickers=pack.getJSONArray("stickers");val items=mutableListOf<Item>();var skipped=0
+   for(i in 0 until minOf(stickers.length(),30)){
+    val s=stickers.getJSONObject(i)
+    if(s.optBoolean("is_animated")||s.optBoolean("is_video")){skipped++;continue}
+    val file=JSONObject(fetch(base+"getFile?file_id="+enc(s.getString("file_id")))).getJSONObject("result").getJSONObject("result").getString("file_path")
+    val url="https://api.telegram.org/file/bot"+token+"/"+file
+    items.add(Item(s.optString("emoji","Sticker")+" #"+(i+1),url,url,"Telegram"))
+   }
+   ui.post{info.text=pack.optString("title",name)+": ${items.size} stickers estáticos · ${skipped} animados no compatibles aún";items.forEach{add(it)}}
+  }catch(e:Exception){ui.post{info.text="Telegram: ${e.message}"}}}.start()
+ }
+ private fun add(item:Item){
+  val box=LinearLayout(this).apply{orientation=1;setPadding(12,12,12,18);setBackgroundColor(Color.WHITE)}
+  val img=ImageView(this).apply{layoutParams=LinearLayout.LayoutParams(-1,230);scaleType=ImageView.ScaleType.FIT_CENTER}
+  box.addView(img);box.addView(TextView(this).apply{text=item.title+" · "+item.origin;maxLines=2})
+  box.addView(Button(this).apply{text="Crear sticker WebP y compartir";setOnClickListener{convert(item.url)}})
+  list.addView(box,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=12})
+  Thread{try{val data=bytes(item.thumb,5_000_000);val bmp=BitmapFactory.decodeByteArray(data,0,data.size);ui.post{img.setImageBitmap(bmp)}}catch(_:Exception){}}.start()
+ }
+ private fun convert(url:String){info.text="Convirtiendo a sticker…";Thread{try{saveAndShare(bytes(url,10_000_000))}catch(e:Exception){ui.post{info.text="Error: ${e.message}"}}}.start()}
+ private fun saveAndShare(data:ByteArray){
+  val original=BitmapFactory.decodeByteArray(data,0,data.size)?:throw Exception("Formato no compatible")
+  val bitmap=Bitmap.createBitmap(512,512,Bitmap.Config.ARGB_8888)
+  val canvas=Canvas(bitmap);canvas.drawColor(Color.TRANSPARENT,PorterDuff.Mode.CLEAR)
+  val scale=minOf(512f/original.width,512f/original.height)
+  val w=original.width*scale;val h=original.height*scale
+  canvas.drawBitmap(original,null,RectF((512-w)/2,(512-h)/2,(512+w)/2,(512+h)/2),Paint(3))
+  val values=ContentValues().apply{put(MediaStore.Images.Media.DISPLAY_NAME,"StickerIA_${System.currentTimeMillis()}.webp");put(MediaStore.Images.Media.MIME_TYPE,"image/webp");put(MediaStore.Images.Media.RELATIVE_PATH,"Pictures/StickerIA")}
+  val uri=contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values)?:throw Exception("No se pudo crear archivo")
+  contentResolver.openOutputStream(uri)?.use{bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSLESS,100,it)}?:throw Exception("No se pudo guardar")
+  ui.post{
+   info.text="Sticker WebP 512×512 guardado en Pictures/StickerIA"
+   val intent=Intent(Intent.ACTION_SEND).apply{type="image/webp";putExtra(Intent.EXTRA_STREAM,uri);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)}
+   startActivity(Intent.createChooser(intent,"Compartir sticker"))
+  }
+ }
+ override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){super.onActivityResult(requestCode,resultCode,data);if(requestCode==17&&resultCode==RESULT_OK){val uri=data?.data?:return;Thread{try{saveAndShare(contentResolver.openInputStream(uri)!!.use{it.readBytes()})}catch(e:Exception){ui.post{info.text=e.message}}}.start()}}
+ private fun enc(s:String)=URLEncoder.encode(s,"UTF-8")
+ private fun fetch(url:String):String=String(bytes(url,3_000_000),Charsets.UTF_8)
+ private fun bytes(url:String,limit:Int):ByteArray{
+  val c=URL(url).openConnection() as HttpURLConnection;c.connectTimeout=12000;c.readTimeout=18000;c.setRequestProperty("User-Agent","StickerIA/0.3 (Android)")
+  try{if(c.responseCode !in 200..299)throw Exception("HTTP ${c.responseCode}");val out=ByteArrayOutputStream();c.inputStream.use{input->val buf=ByteArray(8192);while(true){val n=input.read(buf);if(n<0)break;if(out.size()+n>limit)throw Exception("Archivo demasiado grande");out.write(buf,0,n)}};return out.toByteArray()}finally{c.disconnect()}
+ }
 }
