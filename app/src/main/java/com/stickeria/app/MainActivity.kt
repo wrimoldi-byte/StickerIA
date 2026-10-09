@@ -228,7 +228,7 @@ class MainActivity : Activity() {
    val (optimized,engine)=if(mode==0)Pair(q,"") else aiQuery(q)
    if(engine.isNotBlank())ui.post{info.text=if(engine=="Gemini"||engine=="Groq")"✦ $engine: buscando «$optimized»…" else engine}
    val searchTerm=stickerKeywords(optimized)
-   if(mode==0)searchSearx(searchTerm+" sticker",results,errors)
+   // Public SearXNG instances currently reject automated JSON image requests; disabled by default.
    val stickerTerm=searchTerm+" cartoon sticker illustration"
    if(mode==9){searchWebImages(searchTerm,"Google",results,errors)}
    if(mode==10){searchWebImages(searchTerm,"Bing",results,errors)}
@@ -241,7 +241,7 @@ class MainActivity : Activity() {
     val pages=JSONObject(fetch(u)).optJSONObject("query")?.optJSONObject("pages")
     if(pages!=null){val it=pages.keys();while(it.hasNext()){val page=pages.getJSONObject(it.next());val im=page.optJSONArray("imageinfo")?.optJSONObject(0)?:continue;val original=im.optString("url");if(original.startsWith("https://")&&original.matches(Regex("(?i).*\\.(png|jpe?g|webp)(\\?.*)?$")))results.add(Item(page.optString("title").removePrefix("File:"),im.optString("thumburl",original),original,"Wikimedia"))}}
    }catch(e:Exception){errors.add("Wikimedia: ${e.message}")}
-   if(mode==0||mode==2)try{
+   if(mode==2)try{
     val j=JSONObject(fetch("https://api.openverse.org/v1/images/?q="+enc(stickerTerm)+"&page_size=40"))
     val a=j.optJSONArray("results")
     if(a!=null)for(i in 0 until a.length()){val x=a.getJSONObject(i);val u=x.optString("url");if(u.startsWith("https://"))results.add(Item(x.optString("title","Imagen"),x.optString("thumbnail",u),u,"Openverse · ${x.optString("license")}"))}
