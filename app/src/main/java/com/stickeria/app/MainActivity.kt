@@ -22,40 +22,80 @@ class MainActivity : Activity() {
  private data class Item(val title:String,val thumb:String,val url:String,val origin:String)
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
-  window.statusBarColor=Color.rgb(20,27,48)
-  window.navigationBarColor=Color.rgb(20,27,48)
+  val bg=Color.rgb(13,15,29);val panel=Color.rgb(27,30,49);val purple=Color.rgb(124,82,245);val muted=Color.rgb(169,174,199)
+  window.statusBarColor=bg;window.navigationBarColor=bg
   fun dp(n:Int)=(n*resources.displayMetrics.density).toInt()
-  fun shape(color:Int,radius:Int=14):android.graphics.drawable.GradientDrawable =
-   android.graphics.drawable.GradientDrawable().apply{setColor(color);cornerRadius=dp(radius).toFloat()}
-  fun action(label:String,color:Int,onTap:()->Unit):TextView=TextView(this).apply{
-   text=label;textSize=15f;setTypeface(null,1);gravity=Gravity.CENTER
-   setTextColor(Color.WHITE);background=shape(color)
-   setOnClickListener{onTap()}
+  fun shape(color:Int,radius:Int=16)=android.graphics.drawable.GradientDrawable().apply{setColor(color);cornerRadius=dp(radius).toFloat()}
+  fun title(t:String,size:Float=15f,color:Int=Color.WHITE)=TextView(this).apply{text=t;textSize=size;setTextColor(color);setTypeface(null,1)}
+  fun button(t:String,color:Int,onTap:()->Unit)=TextView(this).apply{
+   text=t;textSize=14f;setTypeface(null,1);gravity=Gravity.CENTER;setTextColor(Color.WHITE);background=shape(color,15);setOnClickListener{onTap()}
   }
-  val root=LinearLayout(this).apply{orientation=1;setPadding(dp(18),dp(12),dp(18),dp(8));setBackgroundColor(Color.rgb(245,247,251))}
-  root.addView(TextView(this).apply{text="✦ StickerIA";textSize=27f;setTypeface(null,1);setTextColor(Color.rgb(24,34,62))})
-  root.addView(TextView(this).apply{text="Buscá, creá y compartí stickers";textSize=14f;setTextColor(Color.rgb(94,106,128));setPadding(0,0,0,dp(14))})
-  query=EditText(this).apply{hint="Ej: perro, memes, gatos…";setSingleLine(true);textSize=17f;setPadding(dp(14),0,dp(14),0);background=shape(Color.WHITE);setTextColor(Color.rgb(30,40,60));setHintTextColor(Color.GRAY)}
-  root.addView(query,LinearLayout.LayoutParams(-1,dp(52)))
-  root.addView(TextView(this).apply{text="FUENTE DE IMÁGENES";textSize=11f;setTextColor(Color.rgb(96,110,130));setPadding(0,dp(14),0,dp(4))})
-  source=Spinner(this);source.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,names)
-  root.addView(source,LinearLayout.LayoutParams(-1,dp(50)))
-  val actions=LinearLayout(this).apply{orientation=0;setPadding(0,dp(8),0,0)}
-  actions.addView(action("🔎 Buscar",Color.rgb(34,87,177)){search()},LinearLayout.LayoutParams(0,dp(50),1f))
-  actions.addView(action("＋ Mi galería",Color.rgb(62,76,102)){startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply{type="image/*"},17)},LinearLayout.LayoutParams(0,dp(50),1f).apply{leftMargin=dp(8)})
-  root.addView(actions)
-  root.addView(action("Agregar paquete a WhatsApp",Color.rgb(20,145,94)){installPack()},LinearLayout.LayoutParams(-1,dp(52)).apply{topMargin=dp(12)})
-  root.addView(TextView(this).apply{text="TELEGRAM";textSize=11f;setTextColor(Color.rgb(96,110,130));setPadding(0,dp(16),0,dp(6))})
-  val tg=LinearLayout(this).apply{orientation=0}
-  tg.addView(action("Buscar packs",Color.rgb(42,131,190)){val q=query.text.toString().trim();if(q.isNotBlank()){list.removeAllViews();discoverTelegram(q)}else info.text="Escribí qué stickers querés buscar"},LinearLayout.LayoutParams(0,dp(46),1f))
-  tg.addView(action("⚙ Token",Color.rgb(87,100,120)){configToken()},LinearLayout.LayoutParams(0,dp(46),1f).apply{leftMargin=dp(8)})
-  root.addView(tg)
-  root.addView(TextView(this).apply{text="GIPHY / TENOR";textSize=11f;setTextColor(Color.rgb(96,110,130));setPadding(0,dp(12),0,dp(4))})
-  root.addView(action("⚙ Configurar APIs de GIFs",Color.rgb(91,97,122)){configGifKeys()},LinearLayout.LayoutParams(-1,dp(42)))
-  info=TextView(this).apply{text="Escribí algo y tocá Buscar.";textSize=13f;setTextColor(Color.rgb(64,76,100));setPadding(0,dp(16),0,dp(12))}
-  root.addView(info)
-  val scroll=ScrollView(this);list=LinearLayout(this).apply{orientation=1};scroll.addView(list);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
-  setContentView(root)
+  val page=LinearLayout(this).apply{orientation=1;setBackgroundColor(bg);setPadding(dp(18),dp(12),dp(18),dp(8))}
+  val header=LinearLayout(this).apply{gravity=Gravity.CENTER_VERTICAL}
+  val brand=LinearLayout(this).apply{orientation=1}
+  brand.addView(title("✦ StickerIA",27f))
+  brand.addView(TextView(this).apply{text="Encontrá tu próxima reacción";textSize=12f;setTextColor(muted)})
+  header.addView(brand,LinearLayout.LayoutParams(0,-2,1f))
+  header.addView(button("♛ PRO",Color.rgb(75,52,133)){AlertDialog.Builder(this).setTitle("StickerIA Premium").setMessage("Próximamente: sin anuncios y más búsquedas con IA. Todavía no se realizan cobros.").setPositiveButton("Entendido",null).show()},LinearLayout.LayoutParams(dp(78),dp(38)))
+  page.addView(header)
+  val searchCard=LinearLayout(this).apply{orientation=1;background=shape(panel,22);setPadding(dp(14),dp(14),dp(14),dp(14))}
+  searchCard.addView(title("¿Qué sticker estás buscando?",18f))
+  searchCard.addView(TextView(this).apply{text="Memes, animales, reacciones y mucho más";textSize=12f;setTextColor(muted);setPadding(0,dp(3),0,dp(12))})
+  query=EditText(this).apply{hint="Ej: perros graciosos, memes…";setSingleLine(true);textSize=15f;setPadding(dp(14),0,dp(14),0);background=shape(Color.rgb(43,46,69),13);setTextColor(Color.WHITE);setHintTextColor(muted)}
+  searchCard.addView(query,LinearLayout.LayoutParams(-1,dp(52)))
+  val quick=LinearLayout(this).apply{orientation=0;setPadding(0,dp(12),0,0)}
+  quick.addView(button("✦ Explorar",purple){search()},LinearLayout.LayoutParams(0,dp(48),1f))
+  quick.addView(button("＋ Crear sticker",Color.rgb(58,63,89)){startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply{type="image/*"},17)},LinearLayout.LayoutParams(0,dp(48),1f).apply{leftMargin=dp(8)})
+  searchCard.addView(quick)
+  page.addView(searchCard,LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(18)})
+  val categories=HorizontalScrollView(this).apply{isHorizontalScrollBarEnabled=false}
+  val chips=LinearLayout(this).apply{orientation=0;setPadding(0,dp(12),0,dp(12))}
+  listOf("😂 Memes","🐶 Perros","🐱 Gatos","❤️ Amor","🎉 Festejos").forEach{label->
+   chips.addView(button(label,Color.rgb(44,47,71)){query.setText(label.substringAfter(" "));search()},LinearLayout.LayoutParams(dp(104),dp(40)).apply{rightMargin=dp(8)})
+  }
+  categories.addView(chips);page.addView(categories)
+  val controls=LinearLayout(this).apply{orientation=0;gravity=Gravity.CENTER_VERTICAL}
+  controls.addView(title("Descubrir stickers",18f),LinearLayout.LayoutParams(0,-2,1f))
+  controls.addView(button("⚙ Fuentes",Color.rgb(57,61,87)){showSources()},LinearLayout.LayoutParams(dp(104),dp(40)))
+  page.addView(controls)
+  source=Spinner(this)
+  source.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,names)
+  source.visibility=View.GONE
+  page.addView(source,LinearLayout.LayoutParams(1,1))
+  info=TextView(this).apply{text="Elegí una categoría o escribí algo para explorar.";textSize=12f;setTextColor(muted);setPadding(0,dp(10),0,dp(10))}
+  page.addView(info)
+  val scroll=ScrollView(this).apply{fillViewport=false}
+  list=LinearLayout(this).apply{orientation=1}
+  scroll.addView(list)
+  page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
+  val nav=LinearLayout(this).apply{orientation=0;setPadding(0,dp(8),0,dp(4))}
+  nav.addView(button("⌕ Buscar",purple){query.requestFocus()},LinearLayout.LayoutParams(0,dp(49),1f))
+  nav.addView(button("▣ Mis packs",Color.rgb(48,52,78)){showMyPack()},LinearLayout.LayoutParams(0,dp(49),1f).apply{leftMargin=dp(8)})
+  nav.addView(button("⚙ Ajustes",Color.rgb(48,52,78)){showSettings()},LinearLayout.LayoutParams(0,dp(49),1f).apply{leftMargin=dp(8)})
+  page.addView(nav)
+  setContentView(page)
+ }
+ private fun showSources(){
+  AlertDialog.Builder(this).setTitle("Elegir fuente").setSingleChoiceItems(names,source.selectedItemPosition){d,which->
+   source.setSelection(which);d.dismiss();info.text="Fuente: "+names[which]
+  }.setNegativeButton("Cancelar",null).show()
+ }
+ private fun showMyPack(){
+  val dir=File(filesDir,"wa_stickers")
+  val count=dir.listFiles()?.count{it.extension=="webp"}?:0
+  AlertDialog.Builder(this).setTitle("Mis stickers").setMessage("Tenés $count stickers guardados. WhatsApp necesita al menos 3 para instalar un paquete.")
+   .setPositiveButton("Agregar a WhatsApp"){_,_->installPack()}.setNegativeButton("Cerrar",null).show()
+ }
+ private fun showSettings(){
+  val options=arrayOf("Buscar packs de Telegram","Configurar token de Telegram","Configurar GIPHY y Tenor","Agregar paquete a WhatsApp")
+  AlertDialog.Builder(this).setTitle("Ajustes y herramientas").setItems(options){_,which->
+   when(which){
+    0->{val q=query.text.toString().trim();if(q.isBlank())info.text="Escribí una búsqueda primero" else{list.removeAllViews();discoverTelegram(q)}}
+    1->configToken()
+    2->configGifKeys()
+    3->installPack()
+   }
+  }.setNegativeButton("Cerrar",null).show()
  }
  private fun configGifKeys(){
   val container=LinearLayout(this).apply{orientation=1;setPadding(28,4,28,4)}
