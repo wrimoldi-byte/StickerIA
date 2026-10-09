@@ -195,19 +195,14 @@ class MainActivity : Activity() {
   val mode=source.selectedItemPosition
   if(q.contains("t.me/addstickers/")){telegram(q);return}
   if(mode==4){discoverTelegram(q);return}
-  if(mode==7||mode==8){
-   val site=if(mode==7)"https://www.pinterest.com/search/pins/?q=" else "https://www.instagram.com/explore/tags/"
-   val target=if(mode==7)site+enc(q+" sticker") else site+enc(q.replace(" ","").lowercase())+"/"
-   try{startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(target)));info.text="Explorando "+names[mode]+". Guardá la imagen y tocá Crear sticker para importarla."}
-   catch(e:Exception){info.text="No se pudo abrir "+names[mode]+": "+e.message}
-   return
-  }
   Thread{
    val results=mutableListOf<Item>();val errors=mutableListOf<String>()
    val (optimized,engine)=aiQuery(q)
    if(engine.isNotBlank())ui.post{info.text=if(engine=="Gemini"||engine=="Groq")"✦ $engine: buscando «$optimized»…" else engine}
    val searchTerm=optimized
    val stickerTerm=optimized+" cartoon sticker transparent illustration"
+   if(mode==0||mode==7){searchIndexedImages(searchTerm,"pinterest.com","Pinterest",results,errors)}
+   if(mode==0||mode==8){searchIndexedImages(searchTerm,"instagram.com","Instagram",results,errors)}
    if(mode==0||mode==5){searchGiphy(searchTerm,results,errors)}
    if(mode==0||mode==6){searchTenor(searchTerm,results,errors)}
    if(mode==1)try{
@@ -238,6 +233,18 @@ class MainActivity : Activity() {
    }catch(e:Exception){errors.add("OpenMoji: ${e.message}")}
    ui.post{info.text=(if(engine=="Gemini"||engine=="Groq")"✦ $engine · " else if(engine.isNotBlank())engine+" · " else "")+"${results.size} resultados"+if(errors.isNotEmpty())" · "+errors.joinToString("; ") else "";results.forEach{add(it)}}
   }.start()
+ }
+ private fun searchIndexedImages(q:String,domain:String,label:String,results:MutableList<Item>,errors:MutableList<String>){
+  try{
+   // Public search index only; no authentication, cookies, or private content.
+   val html=fetchLarge("https://www.bing.com/images/search?q="+enc("site:"+domain+" "+q)+"&form=HDRSC3",2_000_000)
+   val rx=Regex("""murl(?:&quot;|\\")?\\s*:\\s*(?:&quot;|\\")([^"\\s<]+)""",RegexOption.IGNORE_CASE)
+   val candidates=rx.findAll(html).map{it.groupValues[1].replace("&amp;","&").replace("\\u0026","&")}.distinct().take(24).toList()
+   for(url in candidates){
+    if(url.startsWith("https://")&&url.length<1800)results.add(Item(q,url,url,label+" · índice público"))
+   }
+   if(candidates.isEmpty())errors.add("$label: sin imágenes accesibles desde el índice público")
+  }catch(e:Exception){errors.add("$label: "+(e.message?:"Error de búsqueda"))}
  }
  private fun searchGiphy(q:String,results:MutableList<Item>,errors:MutableList<String>){
   val key=getPreferences(0).getString("giphy","").orEmpty()
