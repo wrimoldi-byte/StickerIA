@@ -241,13 +241,8 @@ class MainActivity : Activity() {
    val target=if(engine=="Google")"https://www.google.com/search?tbm=isch&q="+enc(q) else "https://www.bing.com/images/search?q="+enc(q)
    val html=fetchLarge(target,2_500_000)
    val links=LinkedHashSet<String>()
-   if(engine=="Bing"){
-    val rx=Regex("""murl(?:&quot;|\\")?\\s*:\\s*(?:&quot;|\\")([^"<>]+)""",RegexOption.IGNORE_CASE)
-    rx.findAll(html).forEach{links.add(it.groupValues[1])}
-   }else{
-    val rx=Regex("""https?[^"\\s<>]+?\\.(?:jpg|jpeg|png|webp)(?:\\?[^"\\s<>]*)?""",RegexOption.IGNORE_CASE)
-    rx.findAll(html).forEach{links.add(it.value)}
-   }
+   val rx=Regex("""https?[^"<> ]+?\\.(?:jpg|jpeg|png|webp)(?:\\?[^"<> ]*)?""",RegexOption.IGNORE_CASE)
+   rx.findAll(html).forEach{links.add(it.value)}
    for(raw in links){
     val url=raw.replace("&amp;","&").replace("\\u003d","=").replace("\\u0026","&").replace("\\/","/")
     if(url.startsWith("https://")&&url.length<1800&&!url.contains("google.com/images/branding")&&!url.contains("bing.com/rp/")){
