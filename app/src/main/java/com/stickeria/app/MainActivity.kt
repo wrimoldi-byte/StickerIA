@@ -23,7 +23,7 @@ class MainActivity : Activity() {
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
   val root=LinearLayout(this).apply{orientation=1;setPadding(22,30,22,10);setBackgroundColor(Color.rgb(246,247,252))}
-  root.addView(TextView(this).apply{text="✨ StickerIA 0.3";textSize=28f;setTextColor(Color.rgb(30,34,60))})
+  root.addView(TextView(this).apply{text="✨ StickerIA 0.4";textSize=28f;setTextColor(Color.rgb(30,34,60))})
   root.addView(TextView(this).apply{text="Buscá imágenes, importá stickers y convertí a WebP para WhatsApp";textSize=13f})
   query=EditText(this).apply{hint="Memes, gatos o t.me/addstickers/...";setSingleLine(true)}
   root.addView(query)
@@ -32,6 +32,7 @@ class MainActivity : Activity() {
   root.addView(Button(this).apply{text="📷 Crear sticker desde mi galería";setOnClickListener{
    startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply{type="image/*"},17)
   }})
+  root.addView(Button(this).apply{text="🟢 Agregar paquete a WhatsApp";setOnClickListener{installPack()}})
   root.addView(Button(this).apply{text="⚙ Configurar token de bot Telegram";setOnClickListener{configToken()}})
   info=TextView(this).apply{text="Elegí una fuente y buscá.";setPadding(0,12,0,12)}
   root.addView(info)
@@ -86,14 +87,14 @@ class MainActivity : Activity() {
   val box=LinearLayout(this).apply{orientation=1;setPadding(12,12,12,18);setBackgroundColor(Color.WHITE)}
   val img=ImageView(this).apply{layoutParams=LinearLayout.LayoutParams(-1,480);scaleType=ImageView.ScaleType.FIT_CENTER}
   img.setOnClickListener { preview(item) };box.addView(img);box.addView(TextView(this).apply{text=item.title+" · "+item.origin;maxLines=2})
-  box.addView(Button(this).apply{text="Guardar sticker WebP / compartir imagen";setOnClickListener{convert(item.url)}})
+  box.addView(Button(this).apply{text="➕ Guardar en mi paquete WhatsApp";setOnClickListener{convert(item.url)}})
   list.addView(box,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=12})
   Thread{try{val data=bytes(item.thumb,5_000_000);val bmp=BitmapFactory.decodeByteArray(data,0,data.size);ui.post{img.setImageBitmap(bmp)}}catch(_:Exception){}}.start()
  }
  private fun preview(item:Item){
   val viewer=ImageView(this).apply{adjustViewBounds=true;scaleType=ImageView.ScaleType.FIT_CENTER;setPadding(12,12,12,12)}
   val dialog=AlertDialog.Builder(this).setTitle(item.title).setView(viewer)
-   .setPositiveButton("Convertir a WebP"){_,_->convert(item.url)}
+   .setPositiveButton("Agregar al paquete"){_,_->convert(item.url)}
    .setNegativeButton("Cerrar",null).create()
   dialog.show()
   Thread{try{val data=bytes(item.thumb,5_000_000);val bmp=BitmapFactory.decodeByteArray(data,0,data.size);ui.post{viewer.setImageBitmap(bmp)}}catch(_:Exception){}}.start()
@@ -107,15 +108,39 @@ class MainActivity : Activity() {
   val w=original.width*scale;val h=original.height*scale
   canvas.drawBitmap(original,null,RectF((512-w)/2,(512-h)/2,(512+w)/2,(512+h)/2),Paint(3))
   val values=ContentValues().apply{put(MediaStore.Images.Media.DISPLAY_NAME,"StickerIA_${System.currentTimeMillis()}.webp");put(MediaStore.Images.Media.MIME_TYPE,"image/webp");put(MediaStore.Images.Media.RELATIVE_PATH,"Pictures/StickerIA")}
+  val dir=File(filesDir,"wa_stickers").apply{mkdirs()}
+  val count=dir.listFiles()?.count{it.name.endsWith(".webp")}?:0
+  val file=File(dir,"sticker_"+System.currentTimeMillis()+".webp")
+  val output=ByteArrayOutputStream()
+  bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY,80,output)
+  if(output.size()>100_000)throw Exception("Sticker supera 100 KB; elegí otra imagen")
+  file.writeBytes(output.toByteArray())
+  if(!File(dir,"tray.png").exists()){
+   val icon=Bitmap.createScaledBitmap(bitmap,96,96,true)
+   FileOutputStream(File(dir,"tray.png")).use{icon.compress(Bitmap.CompressFormat.PNG,100,it)}
+  }
   val uri=contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values)?:throw Exception("No se pudo crear archivo")
   contentResolver.openOutputStream(uri)?.use{bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSLESS,100,it)}?:throw Exception("No se pudo guardar")
   ui.post{
-   info.text="Sticker WebP 512×512 guardado en Pictures/StickerIA"
-   val intent=Intent(Intent.ACTION_SEND).apply{type="image/webp";putExtra(Intent.EXTRA_STREAM,uri);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)}
-   startActivity(Intent.createChooser(intent,"Compartir sticker"))
+   info.text="Sticker añadido al paquete. Necesitás al menos 3 para instalarlo en WhatsApp."
+   if((dir.listFiles()?.count{it.extension=="webp"}?:0)>=3)installPack()
   }
  }
  override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){super.onActivityResult(requestCode,resultCode,data);if(requestCode==17&&resultCode==RESULT_OK){val uri=data?.data?:return;Thread{try{saveAndShare(contentResolver.openInputStream(uri)!!.use{it.readBytes()})}catch(e:Exception){ui.post{info.text=e.message}}}.start()}}
+ private fun installPack(){
+  val dir=File(filesDir,"wa_stickers")
+  val count=dir.listFiles()?.count{it.extension=="webp"}?:0
+  if(count<3){info.text="Agregá al menos 3 stickers (tenés $count).";return}
+  try{
+   val intent=Intent("com.whatsapp.intent.action.ENABLE_STICKER_PACK").apply{
+    putExtra("sticker_pack_id",StickerProvider.PACK)
+    putExtra("sticker_pack_authority",StickerProvider.AUTH)
+    putExtra("sticker_pack_name","Mis stickers StickerIA")
+    setPackage("com.whatsapp")
+   }
+   startActivityForResult(intent,21)
+  }catch(e:Exception){info.text="WhatsApp no pudo abrir el paquete: ${e.message}"}
+ }
  private fun enc(s:String)=URLEncoder.encode(s,"UTF-8")
  private fun fetch(url:String):String=String(bytes(url,3_000_000),Charsets.UTF_8)
  private fun bytes(url:String,limit:Int):ByteArray{
