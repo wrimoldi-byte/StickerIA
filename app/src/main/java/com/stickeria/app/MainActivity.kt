@@ -14,7 +14,7 @@ import java.io.*
 
 class MainActivity : Activity() {
  private val ui=Handler(Looper.getMainLooper())
- private lateinit var list:LinearLayout
+ private lateinit var list:GridLayout
  private lateinit var info:TextView
  private lateinit var query:EditText
  private lateinit var source:Spinner
@@ -65,7 +65,7 @@ class MainActivity : Activity() {
   info=TextView(this).apply{text="Elegí una categoría o escribí algo para explorar.";textSize=12f;setTextColor(muted);setPadding(0,dp(10),0,dp(10))}
   page.addView(info)
   val scroll=ScrollView(this).apply{isFillViewport=false}
-  list=LinearLayout(this).apply{orientation=1}
+  list=GridLayout(this).apply{columnCount=3;alignmentMode=GridLayout.ALIGN_BOUNDS}
   scroll.addView(list)
   page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
   val nav=LinearLayout(this).apply{orientation=0;setPadding(0,dp(8),0,dp(4))}
@@ -300,12 +300,42 @@ class MainActivity : Activity() {
   }.start()
  }
  private fun add(item:Item){
-  val box=LinearLayout(this).apply{orientation=1;setPadding(14,14,14,14);background=android.graphics.drawable.GradientDrawable().apply{setColor(Color.rgb(29,32,52));cornerRadius=22f}}
-  val img=ImageView(this).apply{layoutParams=LinearLayout.LayoutParams(-1,330);scaleType=ImageView.ScaleType.FIT_CENTER}
-  img.setOnClickListener { preview(item) };box.addView(img);box.addView(TextView(this).apply{text=item.title+" · "+item.origin;maxLines=2;setTextColor(Color.WHITE);textSize=14f;setPadding(4,8,4,8)})
-  box.addView(TextView(this).apply{text="＋ Agregar sticker";gravity=Gravity.CENTER;textSize=15f;setTypeface(null,1);setTextColor(Color.WHITE);background=android.graphics.drawable.GradientDrawable().apply{setColor(Color.rgb(124,82,245));cornerRadius=18f};setOnClickListener{convert(item.url)}},LinearLayout.LayoutParams(-1,50))
-  list.addView(box,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=12})
-  Thread{try{val data=bytes(item.thumb,5_000_000);val bmp=BitmapFactory.decodeByteArray(data,0,data.size);ui.post{img.setImageBitmap(bmp)}}catch(_:Exception){}}.start()
+  val density=resources.displayMetrics.density
+  val dp={n:Int->(n*density).toInt()}
+  val width=resources.displayMetrics.widthPixels-dp(36)
+  val gap=dp(6)
+  val tile=(width-gap*6)/3
+  val box=LinearLayout(this).apply{
+   orientation=1
+   setPadding(dp(4),dp(4),dp(4),dp(4))
+   background=android.graphics.drawable.GradientDrawable().apply{
+    setColor(Color.rgb(29,32,52));cornerRadius=dp(12).toFloat()
+   }
+  }
+  val img=ImageView(this).apply{
+   scaleType=ImageView.ScaleType.FIT_CENTER
+   setBackgroundColor(Color.rgb(38,41,61))
+   setOnClickListener{preview(item)}
+  }
+  box.addView(img,LinearLayout.LayoutParams(-1,tile-dp(12)))
+  box.addView(TextView(this).apply{
+   text="＋ Agregar";gravity=Gravity.CENTER;textSize=11f;setTypeface(null,1)
+   setTextColor(Color.WHITE)
+   background=android.graphics.drawable.GradientDrawable().apply{
+    setColor(Color.rgb(124,82,245));cornerRadius=dp(8).toFloat()
+   }
+   setOnClickListener{convert(item.url)}
+  },LinearLayout.LayoutParams(-1,dp(32)).apply{topMargin=dp(4)})
+  val params=GridLayout.LayoutParams().apply{
+   width=tile;height=tile+dp(32)
+   setMargins(gap,gap,gap,gap)
+  }
+  list.addView(box,params)
+  Thread{try{
+   val data=bytes(item.thumb,5_000_000)
+   val bmp=BitmapFactory.decodeByteArray(data,0,data.size)
+   ui.post{img.setImageBitmap(bmp)}
+  }catch(_:Exception){}}.start()
  }
  private fun preview(item:Item){
   val viewer=ImageView(this).apply{adjustViewBounds=true;scaleType=ImageView.ScaleType.FIT_CENTER;setPadding(12,12,12,12)}
