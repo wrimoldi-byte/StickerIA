@@ -327,7 +327,7 @@ class MainActivity : Activity() {
    setOnClickListener{convert(item.url)}
   },LinearLayout.LayoutParams(-1,dp(32)).apply{topMargin=dp(4)})
   val params=GridLayout.LayoutParams().apply{
-   width=tile;height=tile+dp(32)
+   width=tile;this.height=tile+dp(32)
    setMargins(gap,gap,gap,gap)
   }
   list.addView(box,params)
