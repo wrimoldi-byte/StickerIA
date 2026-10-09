@@ -84,11 +84,19 @@ class MainActivity : Activity() {
  }
  private fun add(item:Item){
   val box=LinearLayout(this).apply{orientation=1;setPadding(12,12,12,18);setBackgroundColor(Color.WHITE)}
-  val img=ImageView(this).apply{layoutParams=LinearLayout.LayoutParams(-1,230);scaleType=ImageView.ScaleType.FIT_CENTER}
-  box.addView(img);box.addView(TextView(this).apply{text=item.title+" · "+item.origin;maxLines=2})
-  box.addView(Button(this).apply{text="Crear sticker WebP y compartir";setOnClickListener{convert(item.url)}})
+  val img=ImageView(this).apply{layoutParams=LinearLayout.LayoutParams(-1,480);scaleType=ImageView.ScaleType.FIT_CENTER}
+  img.setOnClickListener { preview(item) };box.addView(img);box.addView(TextView(this).apply{text=item.title+" · "+item.origin;maxLines=2})
+  box.addView(Button(this).apply{text="Guardar sticker WebP / compartir imagen";setOnClickListener{convert(item.url)}})
   list.addView(box,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=12})
   Thread{try{val data=bytes(item.thumb,5_000_000);val bmp=BitmapFactory.decodeByteArray(data,0,data.size);ui.post{img.setImageBitmap(bmp)}}catch(_:Exception){}}.start()
+ }
+ private fun preview(item:Item){
+  val viewer=ImageView(this).apply{adjustViewBounds=true;scaleType=ImageView.ScaleType.FIT_CENTER;setPadding(12,12,12,12)}
+  val dialog=AlertDialog.Builder(this).setTitle(item.title).setView(viewer)
+   .setPositiveButton("Convertir a WebP"){_,_->convert(item.url)}
+   .setNegativeButton("Cerrar",null).create()
+  dialog.show()
+  Thread{try{val data=bytes(item.thumb,5_000_000);val bmp=BitmapFactory.decodeByteArray(data,0,data.size);ui.post{viewer.setImageBitmap(bmp)}}catch(_:Exception){}}.start()
  }
  private fun convert(url:String){info.text="Convirtiendo a sticker…";Thread{try{saveAndShare(bytes(url,10_000_000))}catch(e:Exception){ui.post{info.text="Error: ${e.message}"}}}.start()}
  private fun saveAndShare(data:ByteArray){
