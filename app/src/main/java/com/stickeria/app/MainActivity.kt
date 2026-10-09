@@ -87,15 +87,62 @@ class MainActivity : Activity() {
    .setPositiveButton("Agregar a WhatsApp"){_,_->installPack()}.setNegativeButton("Cerrar",null).show()
  }
  private fun showSettings(){
-  val options=arrayOf("Buscar packs de Telegram","Configurar token de Telegram","Configurar GIPHY y Tenor","Agregar paquete a WhatsApp")
+  val options=arrayOf("Configurar IA: Gemini / Groq","Buscar packs de Telegram","Configurar token de Telegram","Configurar GIPHY y Tenor","Agregar paquete a WhatsApp")
   AlertDialog.Builder(this).setTitle("Ajustes y herramientas").setItems(options){_,which->
    when(which){
-    0->{val q=query.text.toString().trim();if(q.isBlank())info.text="Escribí una búsqueda primero" else{list.removeAllViews();discoverTelegram(q)}}
-    1->configToken()
-    2->configGifKeys()
-    3->installPack()
+    0->configAI()
+    1->{val q=query.text.toString().trim();if(q.isBlank())info.text="Escribí una búsqueda primero" else{list.removeAllViews();discoverTelegram(q)}}
+    2->configToken()
+    3->configGifKeys()
+    4->installPack()
    }
   }.setNegativeButton("Cerrar",null).show()
+ }
+ private fun configAI(){
+  val prefs=getPreferences(0)
+  val panel=LinearLayout(this).apply{orientation=1;setPadding(28,8,28,8)}
+  val enabled=CheckBox(this).apply{text="Usar IA para mejorar las búsquedas";isChecked=prefs.getBoolean("ai_enabled",false)}
+  val gemini=EditText(this).apply{hint="Clave API Gemini";setSingleLine(true);setText(prefs.getString("gemini_key",""))}
+  val groq=EditText(this).apply{hint="Clave API Groq (respaldo)";setSingleLine(true);setText(prefs.getString("groq_key",""))}
+  panel.addView(enabled);panel.addView(gemini);panel.addView(groq)
+  AlertDialog.Builder(this).setTitle("Búsqueda inteligente ✦")
+   .setMessage("Gemini mejora los términos de búsqueda. Si falla, prueba Groq. Si ambas fallan, usa la búsqueda normal. No busca imágenes directamente en toda la web. Para pruebas personales: nunca distribuyas una APK comercial con claves compartidas.")
+   .setView(panel).setPositiveButton("Guardar"){_,_->
+    prefs.edit().putBoolean("ai_enabled",enabled.isChecked).putString("gemini_key",gemini.text.toString().trim()).putString("groq_key",groq.text.toString().trim()).apply()
+    info.text=if(enabled.isChecked)"IA activada: Gemini → Groq → búsqueda normal" else "IA desactivada"
+   }.setNegativeButton("Cancelar",null).show()
+ }
+ private fun aiQuery(q:String):Pair<String,String>{
+  val p=getPreferences(0)
+  if(!p.getBoolean("ai_enabled",false))return Pair(q,"")
+  val instruction="You optimize sticker image searches. Translate the user request into 2 to 5 short English image search keywords, retaining the subject and mood. Output ONLY the keywords, no punctuation or explanation. User request: "+q.take(180)
+  val g=p.getString("gemini_key","").orEmpty()
+  if(g.isNotBlank())try{
+   val payload=JSONObject().put("contents",org.json.JSONArray().put(JSONObject().put("parts",org.json.JSONArray().put(JSONObject().put("text",instruction)))))
+   val result=JSONObject(postJson("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",payload.toString(),mapOf("x-goog-api-key" to g)))
+   val text=result.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text").trim()
+   if(text.isNotBlank())return Pair(text.take(100),"Gemini")
+  }catch(_:Exception){}
+  val groq=p.getString("groq_key","").orEmpty()
+  if(groq.isNotBlank())try{
+   val payload=JSONObject().put("model","llama-3.1-8b-instant").put("temperature",0.2).put("max_tokens",48)
+    .put("messages",org.json.JSONArray().put(JSONObject().put("role","user").put("content",instruction)))
+   val result=JSONObject(postJson("https://api.groq.com/openai/v1/chat/completions",payload.toString(),mapOf("Authorization" to "Bearer "+groq)))
+   val text=result.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content").trim()
+   if(text.isNotBlank())return Pair(text.take(100),"Groq")
+  }catch(_:Exception){}
+  return Pair(q,"IA no disponible; búsqueda normal")
+ }
+ private fun postJson(url:String,body:String,headers:Map<String,String>):String{
+  val c=URL(url).openConnection() as HttpURLConnection
+  c.requestMethod="POST";c.connectTimeout=12000;c.readTimeout=16000;c.doOutput=true
+  c.setRequestProperty("Content-Type","application/json")
+  headers.forEach{(k,v)->c.setRequestProperty(k,v)}
+  try{
+   c.outputStream.use{it.write(body.toByteArray(Charsets.UTF_8))}
+   if(c.responseCode !in 200..299)throw Exception("HTTP "+c.responseCode)
+   return c.inputStream.bufferedReader().use{it.readText()}
+  }finally{c.disconnect()}
  }
  private fun configGifKeys(){
   val container=LinearLayout(this).apply{orientation=1;setPadding(28,4,28,4)}
@@ -118,15 +165,18 @@ class MainActivity : Activity() {
   if(mode==4){discoverTelegram(q);return}
   Thread{
    val results=mutableListOf<Item>();val errors=mutableListOf<String>()
-   if(mode==0||mode==5){searchGiphy(q,results,errors)}
-   if(mode==0||mode==6){searchTenor(q,results,errors)}
+   val (optimized,engine)=aiQuery(q)
+   if(engine.isNotBlank())ui.post{info.text=if(engine=="Gemini"||engine=="Groq")"✦ $engine: buscando «$optimized»…" else engine}
+   val searchTerm=optimized
+   if(mode==0||mode==5){searchGiphy(searchTerm,results,errors)}
+   if(mode==0||mode==6){searchTenor(searchTerm,results,errors)}
    if(mode==0||mode==1)try{
-    val u="https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch="+enc(q)+"&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url&iiurlwidth=320&format=json"
+    val u="https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch="+enc(searchTerm)+"&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url&iiurlwidth=320&format=json"
     val pages=JSONObject(fetch(u)).optJSONObject("query")?.optJSONObject("pages")
     if(pages!=null){val it=pages.keys();while(it.hasNext()){val page=pages.getJSONObject(it.next());val im=page.optJSONArray("imageinfo")?.optJSONObject(0)?:continue;val original=im.optString("url");if(original.startsWith("https://")&&original.matches(Regex("(?i).*\\.(png|jpe?g|webp)(\\?.*)?$")))results.add(Item(page.optString("title").removePrefix("File:"),im.optString("thumburl",original),original,"Wikimedia"))}}
    }catch(e:Exception){errors.add("Wikimedia: ${e.message}")}
    if(mode==0||mode==2)try{
-    val j=JSONObject(fetch("https://api.openverse.org/v1/images/?q="+enc(q)+"&page_size=20"))
+    val j=JSONObject(fetch("https://api.openverse.org/v1/images/?q="+enc(searchTerm)+"&page_size=20"))
     val a=j.optJSONArray("results")
     if(a!=null)for(i in 0 until a.length()){val x=a.getJSONObject(i);val u=x.optString("url");if(u.startsWith("https://"))results.add(Item(x.optString("title","Imagen"),x.optString("thumbnail",u),u,"Openverse · ${x.optString("license")}"))}
    }catch(e:Exception){errors.add("Openverse: ${e.message}")}
@@ -136,7 +186,7 @@ class MainActivity : Activity() {
     for(i in 0 until catalog.length()){
      val e=catalog.getJSONObject(i)
      val tags=e.optString("annotation")+" "+e.optString("tags")+" "+e.optString("group")+" "+e.optString("subgroups")
-     if(tags.contains(q,true)){
+     if(tags.contains(searchTerm,true)||tags.contains(q,true)){
       val hex=e.optString("hexcode")
       if(hex.matches(Regex("[A-F0-9-]+"))){
        val url="https://cdn.jsdelivr.net/gh/hfg-gmuend/openmoji@master/color/618x618/"+hex+".png"
@@ -146,7 +196,7 @@ class MainActivity : Activity() {
      }
     }
    }catch(e:Exception){errors.add("OpenMoji: ${e.message}")}
-   ui.post{info.text="${results.size} resultados"+if(errors.isNotEmpty())" · "+errors.joinToString("; ") else "";results.forEach{add(it)}}
+   ui.post{info.text=(if(engine=="Gemini"||engine=="Groq")"✦ $engine · " else "")+"${results.size} resultados"+if(errors.isNotEmpty())" · "+errors.joinToString("; ") else "";results.forEach{add(it)}}
   }.start()
  }
  private fun searchGiphy(q:String,results:MutableList<Item>,errors:MutableList<String>){
