@@ -131,7 +131,7 @@ class MainActivity : Activity() {
      methods!=null&&(0 until methods.length()).any{i->methods.optString(i)=="generateContent"}
     }
    }.map{it.optString(if(gemini)"name" else "id").removePrefix("models/")}
-   val preferred=if(gemini)listOf("gemini-2.5-flash","gemini-2.5-flash-lite","gemini-2.0-flash") else listOf("llama-3.3-70b-versatile","llama-3.1-8b-instant")
+   val preferred=if(gemini)listOf("gemini-2.0-flash","gemini-2.5-flash-lite","gemini-2.5-flash") else listOf("llama-3.1-8b-instant","llama-3.3-70b-versatile")
    return preferred.firstOrNull{it in names} ?: names.firstOrNull{if(gemini)it.contains("flash") else it.contains("llama")&&!it.contains("guard")}.orEmpty()
   }finally{conn.disconnect()}
  }
@@ -200,12 +200,12 @@ class MainActivity : Activity() {
    val (optimized,engine)=aiQuery(q)
    if(engine.isNotBlank())ui.post{info.text=if(engine=="Gemini"||engine=="Groq")"✦ $engine: buscando «$optimized»…" else engine}
    val searchTerm=optimized
-   val stickerTerm=optimized+" cartoon sticker transparent illustration"
+   val stickerTerm=optimized+" sticker"
    if(mode==0||mode==7){searchIndexedImages(searchTerm,"pinterest.com","Pinterest",results,errors)}
    if(mode==0||mode==8){searchIndexedImages(searchTerm,"instagram.com","Instagram",results,errors)}
    if(mode==0||mode==5){searchGiphy(searchTerm,results,errors)}
    if(mode==0||mode==6){searchTenor(searchTerm,results,errors)}
-   if(mode==1)try{
+   if(mode==0||mode==1)try{
     val u="https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch="+enc(stickerTerm)+"&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url&iiurlwidth=320&format=json"
     val pages=JSONObject(fetch(u)).optJSONObject("query")?.optJSONObject("pages")
     if(pages!=null){val it=pages.keys();while(it.hasNext()){val page=pages.getJSONObject(it.next());val im=page.optJSONArray("imageinfo")?.optJSONObject(0)?:continue;val original=im.optString("url");if(original.startsWith("https://")&&original.matches(Regex("(?i).*\\.(png|jpe?g|webp)(\\?.*)?$")))results.add(Item(page.optString("title").removePrefix("File:"),im.optString("thumburl",original),original,"Wikimedia"))}}
@@ -238,12 +238,12 @@ class MainActivity : Activity() {
   try{
    // Public search index only; no authentication, cookies, or private content.
    val html=fetchLarge("https://www.bing.com/images/search?q="+enc("site:"+domain+" "+q)+"&form=HDRSC3",2_000_000)
-   val rx=Regex("""murl(?:&quot;|")\\s*:\\s*(?:&quot;|")([^"<\\s]+)""",RegexOption.IGNORE_CASE)
+   val rx=Regex("""(?:murl|imgurl)(?:&quot;|\\\\")?\\s*:\\s*(?:&quot;|\\\\")([^"<\\s]+)""",RegexOption.IGNORE_CASE)
    val candidates=rx.findAll(html).map{it.groupValues[1].replace("&amp;","&").replace("\\u0026","&")}.distinct().take(24).toList()
    for(url in candidates){
     if(url.startsWith("https://")&&url.length<1800)results.add(Item(q,url,url,label+" · índice público"))
    }
-   if(candidates.isEmpty())errors.add("$label: sin imágenes accesibles desde el índice público")
+   if(candidates.isEmpty())errors.add("$label: índice sin resultados")
   }catch(e:Exception){errors.add("$label: "+(e.message?:"Error de búsqueda"))}
  }
  private fun searchGiphy(q:String,results:MutableList<Item>,errors:MutableList<String>){
