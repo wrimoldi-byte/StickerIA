@@ -117,12 +117,13 @@ class MainActivity : Activity() {
   if(!p.getBoolean("ai_enabled",false))return Pair(q,"")
   val instruction="You optimize sticker image searches. Translate the user request into 2 to 5 short English image search keywords, retaining the subject and mood. Output ONLY the keywords, no punctuation or explanation. User request: "+q.take(180)
   val g=p.getString("gemini_key","").orEmpty()
+  val failures=mutableListOf<String>()
   if(g.isNotBlank())try{
    val payload=JSONObject().put("contents",org.json.JSONArray().put(JSONObject().put("parts",org.json.JSONArray().put(JSONObject().put("text",instruction)))))
    val result=JSONObject(postJson("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",payload.toString(),mapOf("x-goog-api-key" to g)))
    val text=result.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text").trim()
    if(text.isNotBlank())return Pair(text.take(100),"Gemini")
-  }catch(_:Exception){}
+  }catch(e:Exception){failures.add("Gemini: "+(e.message?:"Error desconocido").take(110))}
   val groq=p.getString("groq_key","").orEmpty()
   if(groq.isNotBlank())try{
    val payload=JSONObject().put("model","llama-3.1-8b-instant").put("temperature",0.2).put("max_tokens",48)
@@ -130,8 +131,8 @@ class MainActivity : Activity() {
    val result=JSONObject(postJson("https://api.groq.com/openai/v1/chat/completions",payload.toString(),mapOf("Authorization" to "Bearer "+groq)))
    val text=result.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content").trim()
    if(text.isNotBlank())return Pair(text.take(100),"Groq")
-  }catch(_:Exception){}
-  return Pair(q,"IA no disponible; búsqueda normal")
+  }catch(e:Exception){failures.add("Groq: "+(e.message?:"Error desconocido").take(110))}
+  return Pair(q,if(failures.isEmpty())"IA sin claves; búsqueda normal" else failures.joinToString(" | ")+" · búsqueda normal")
  }
  private fun postJson(url:String,body:String,headers:Map<String,String>):String{
   val c=URL(url).openConnection() as HttpURLConnection
@@ -140,7 +141,11 @@ class MainActivity : Activity() {
   headers.forEach{(k,v)->c.setRequestProperty(k,v)}
   try{
    c.outputStream.use{it.write(body.toByteArray(Charsets.UTF_8))}
-   if(c.responseCode !in 200..299)throw Exception("HTTP "+c.responseCode)
+   if(c.responseCode !in 200..299){
+    val status=c.responseCode
+    val detail=try{JSONObject(c.errorStream?.bufferedReader()?.use{it.readText()}.orEmpty()).optJSONObject("error")?.optString("message").orEmpty()}catch(_:Exception){""}
+    throw Exception("HTTP $status"+if(detail.isNotBlank())": "+detail.take(95) else "")
+   }
    return c.inputStream.bufferedReader().use{it.readText()}
   }finally{c.disconnect()}
  }
@@ -196,7 +201,7 @@ class MainActivity : Activity() {
      }
     }
    }catch(e:Exception){errors.add("OpenMoji: ${e.message}")}
-   ui.post{info.text=(if(engine=="Gemini"||engine=="Groq")"✦ $engine · " else "")+"${results.size} resultados"+if(errors.isNotEmpty())" · "+errors.joinToString("; ") else "";results.forEach{add(it)}}
+   ui.post{info.text=(if(engine=="Gemini"||engine=="Groq")"✦ $engine · " else if(engine.isNotBlank())engine+" · " else "")+"${results.size} resultados"+if(errors.isNotEmpty())" · "+errors.joinToString("; ") else "";results.forEach{add(it)}}
   }.start()
  }
  private fun searchGiphy(q:String,results:MutableList<Item>,errors:MutableList<String>){
