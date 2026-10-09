@@ -83,6 +83,40 @@ class MainActivity : Activity() {
   }
   setContentView(page)
  }
+
+ private fun openWebSearch(){
+  val q=query.text.toString().trim()
+  if(q.isEmpty()){info.text="Escribí qué imagen querés buscar";return}
+  val names=arrayOf("Google Imágenes","Bing Imágenes","Pinterest","Instagram público")
+  val urls=arrayOf("https://www.google.com/search?tbm=isch&q="+enc(q+" sticker"),"https://www.bing.com/images/search?q="+enc(q+" sticker"),"https://www.pinterest.com/search/pins/?q="+enc(q+" sticker"),"https://www.google.com/search?tbm=isch&q="+enc("site:instagram.com "+q))
+  AlertDialog.Builder(this).setTitle("Buscar imágenes en Internet").setItems(names){_,i->showImageBrowser(urls[i],names[i])}.show()
+ }
+ private fun showImageBrowser(url:String,name:String){
+  val layout=LinearLayout(this).apply{orientation=1}
+  val instructions=TextView(this).apply{text="Mantené presionada una imagen para convertirla en sticker. Si no se puede seleccionar, guardala y usá Crear sticker.";setPadding(18,12,18,12)}
+  layout.addView(instructions)
+  val browser=WebView(this)
+  browser.settings.javaScriptEnabled=true
+  browser.settings.domStorageEnabled=true
+  browser.webViewClient=WebViewClient()
+  layout.addView(browser,LinearLayout.LayoutParams(-1,0,1f))
+  browser.setOnLongClickListener{
+   val hit=browser.hitTestResult
+   val imageUrl=hit.extra.orEmpty()
+   if((hit.type==WebView.HitTestResult.IMAGE_TYPE||hit.type==WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE)&&imageUrl.startsWith("https://")){
+    AlertDialog.Builder(this).setTitle("Agregar imagen").setMessage("¿Convertir en sticker?")
+     .setPositiveButton("Agregar"){_,_->convert(imageUrl)}.setNegativeButton("Cancelar",null).show()
+    true
+   }else false
+  }
+  val dialog=AlertDialog.Builder(this).setTitle(name).setView(layout)
+   .setPositiveButton("Cerrar",null)
+   .setNeutralButton("Abrir navegador"){_,_->startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(browser.url?:url)))}.create()
+  dialog.setOnDismissListener{browser.destroy()}
+  dialog.show()
+  dialog.window?.setLayout(-1,(resources.displayMetrics.heightPixels*0.8).toInt())
+  browser.loadUrl(url)
+ }
  private fun showSources(){
   AlertDialog.Builder(this).setTitle("Elegir fuente").setSingleChoiceItems(names,source.selectedItemPosition){d,which->
    source.setSelection(which);d.dismiss();info.text="Fuente: "+names[which]
