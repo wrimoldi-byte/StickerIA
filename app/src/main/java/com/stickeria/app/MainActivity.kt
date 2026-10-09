@@ -18,7 +18,7 @@ class MainActivity : Activity() {
  private lateinit var info:TextView
  private lateinit var query:EditText
  private lateinit var source:Spinner
- private val names=arrayOf("Todas las fuentes","Wikimedia Commons","Openverse","OpenMoji (emojis)","Telegram (packs públicos)","GIPHY (API)","Tenor (API)","Pinterest (web)","Instagram (web)")
+ private val names=arrayOf("Todas las fuentes","Wikimedia Commons","Openverse","OpenMoji (emojis)","Telegram (packs públicos)","GIPHY (API)","Tenor (API)","Pinterest (web)","Instagram (web)","Google Imágenes","Bing Imágenes")
  private data class Item(val title:String,val thumb:String,val url:String,val origin:String)
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
@@ -201,6 +201,8 @@ class MainActivity : Activity() {
    if(engine.isNotBlank())ui.post{info.text=if(engine=="Gemini"||engine=="Groq")"✦ $engine: buscando «$optimized»…" else engine}
    val searchTerm=optimized
    val stickerTerm=optimized+" sticker"
+   if(mode==0||mode==9){searchWebImages(searchTerm,"Google",results,errors)}
+   if(mode==0||mode==10){searchWebImages(searchTerm,"Bing",results,errors)}
    if(mode==0||mode==7){searchIndexedImages(searchTerm,"pinterest.com","Pinterest",results,errors)}
    if(mode==0||mode==8){searchIndexedImages(searchTerm,"instagram.com","Instagram",results,errors)}
    if(mode==0||mode==5){searchGiphy(searchTerm,results,errors)}
@@ -233,6 +235,28 @@ class MainActivity : Activity() {
    }catch(e:Exception){errors.add("OpenMoji: ${e.message}")}
    ui.post{info.text=(if(engine=="Gemini"||engine=="Groq")"✦ $engine · " else if(engine.isNotBlank())engine+" · " else "")+"${results.size} resultados"+if(errors.isNotEmpty())" · "+errors.joinToString("; ") else "";results.forEach{add(it)}}
   }.start()
+ }
+ private fun searchWebImages(q:String,engine:String,results:MutableList<Item>,errors:MutableList<String>){
+  try{
+   val target=if(engine=="Google")"https://www.google.com/search?tbm=isch&q="+enc(q) else "https://www.bing.com/images/search?q="+enc(q)
+   val html=fetchLarge(target,2_500_000)
+   val links=LinkedHashSet<String>()
+   if(engine=="Bing"){
+    val rx=Regex("""murl(?:&quot;|\\")?\\s*:\\s*(?:&quot;|\\")([^"<>]+)""",RegexOption.IGNORE_CASE)
+    rx.findAll(html).forEach{links.add(it.groupValues[1])}
+   }else{
+    val rx=Regex("""https?[^"\\s<>]+?\\.(?:jpg|jpeg|png|webp)(?:\\?[^"\\s<>]*)?""",RegexOption.IGNORE_CASE)
+    rx.findAll(html).forEach{links.add(it.value)}
+   }
+   for(raw in links){
+    val url=raw.replace("&amp;","&").replace("\\u003d","=").replace("\\u0026","&").replace("\\/","/")
+    if(url.startsWith("https://")&&url.length<1800&&!url.contains("google.com/images/branding")&&!url.contains("bing.com/rp/")){
+     results.add(Item(q,url,url,engine+" Imágenes"))
+     if(results.size>=80)break
+    }
+   }
+   if(links.isEmpty())errors.add("$engine: sin enlaces de imágenes recuperables")
+  }catch(e:Exception){errors.add("$engine: "+(e.message?:"Error"))}
  }
  private fun searchIndexedImages(q:String,domain:String,label:String,results:MutableList<Item>,errors:MutableList<String>){
   try{
