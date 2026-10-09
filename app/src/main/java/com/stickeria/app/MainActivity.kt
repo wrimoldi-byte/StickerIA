@@ -18,7 +18,7 @@ class MainActivity : Activity() {
  private lateinit var info:TextView
  private lateinit var query:EditText
  private lateinit var source:Spinner
- private val names=arrayOf("Todas (Wikimedia + Openverse + OpenMoji)","Wikimedia Commons","Openverse","OpenMoji (emojis)","Telegram (packs públicos)")
+ private val names=arrayOf("Todas las fuentes","Wikimedia Commons","Openverse","OpenMoji (emojis)","Telegram (packs públicos)","GIPHY (API)","Tenor (API)")
  private data class Item(val title:String,val thumb:String,val url:String,val origin:String)
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
@@ -50,10 +50,21 @@ class MainActivity : Activity() {
   tg.addView(action("Buscar packs",Color.rgb(42,131,190)){val q=query.text.toString().trim();if(q.isNotBlank()){list.removeAllViews();discoverTelegram(q)}else info.text="Escribí qué stickers querés buscar"},LinearLayout.LayoutParams(0,dp(46),1f))
   tg.addView(action("⚙ Token",Color.rgb(87,100,120)){configToken()},LinearLayout.LayoutParams(0,dp(46),1f).apply{leftMargin=dp(8)})
   root.addView(tg)
+  root.addView(TextView(this).apply{text="GIPHY / TENOR";textSize=11f;setTextColor(Color.rgb(96,110,130));setPadding(0,dp(12),0,dp(4))})
+  root.addView(action("⚙ Configurar APIs de GIFs",Color.rgb(91,97,122)){configGifKeys()},LinearLayout.LayoutParams(-1,dp(42)))
   info=TextView(this).apply{text="Escribí algo y tocá Buscar.";textSize=13f;setTextColor(Color.rgb(64,76,100));setPadding(0,dp(16),0,dp(12))}
   root.addView(info)
   val scroll=ScrollView(this);list=LinearLayout(this).apply{orientation=1};scroll.addView(list);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
   setContentView(root)
+ }
+ private fun configGifKeys(){
+  val container=LinearLayout(this).apply{orientation=1;setPadding(28,4,28,4)}
+  val g=EditText(this).apply{hint="Clave API GIPHY";setSingleLine(true);setText(getPreferences(0).getString("giphy",""))}
+  val t=EditText(this).apply{hint="Clave API Tenor";setSingleLine(true);setText(getPreferences(0).getString("tenor",""))}
+  container.addView(g);container.addView(t)
+  AlertDialog.Builder(this).setTitle("APIs de stickers y GIFs").setMessage("Las claves se guardan en este teléfono. No se publican en GitHub. Los GIFs se importan como stickers estáticos (primer fotograma).").setView(container)
+   .setPositiveButton("Guardar"){_,_->getPreferences(0).edit().putString("giphy",g.text.toString().trim()).putString("tenor",t.text.toString().trim()).apply();info.text="Claves guardadas"}
+   .setNegativeButton("Cancelar",null).show()
  }
  private fun configToken(){
   val field=EditText(this).apply{hint="Token de @BotFather";setSingleLine(true)}
@@ -67,6 +78,8 @@ class MainActivity : Activity() {
   if(mode==4){discoverTelegram(q);return}
   Thread{
    val results=mutableListOf<Item>();val errors=mutableListOf<String>()
+   if(mode==0||mode==5){searchGiphy(q,results,errors)}
+   if(mode==0||mode==6){searchTenor(q,results,errors)}
    if(mode==0||mode==1)try{
     val u="https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch="+enc(q)+"&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url&iiurlwidth=320&format=json"
     val pages=JSONObject(fetch(u)).optJSONObject("query")?.optJSONObject("pages")
@@ -96,11 +109,41 @@ class MainActivity : Activity() {
    ui.post{info.text="${results.size} resultados"+if(errors.isNotEmpty())" · "+errors.joinToString("; ") else "";results.forEach{add(it)}}
   }.start()
  }
+ private fun searchGiphy(q:String,results:MutableList<Item>,errors:MutableList<String>){
+  val key=getPreferences(0).getString("giphy","").orEmpty()
+  if(key.isBlank()){errors.add("GIPHY requiere clave API");return}
+  try{
+   val j=JSONObject(fetch("https://api.giphy.com/v1/stickers/search?api_key="+enc(key)+"&q="+enc(q)+"&limit=24&rating=g"))
+   val arr=j.optJSONArray("data")?:return
+   for(i in 0 until arr.length()){
+    val x=arr.getJSONObject(i);val images=x.optJSONObject("images")?:continue
+    val fixed=images.optJSONObject("fixed_width_still")?.optString("url").orEmpty()
+    val original=images.optJSONObject("original_still")?.optString("url").orEmpty()
+    val url=if(original.startsWith("https://"))original else fixed
+    if(url.startsWith("https://"))results.add(Item(x.optString("title","Sticker"),fixed.ifBlank{url},url,"GIPHY · imagen estática"))
+   }
+  }catch(e:Exception){errors.add("GIPHY: ${e.message}")}
+ }
+ private fun searchTenor(q:String,results:MutableList<Item>,errors:MutableList<String>){
+  val key=getPreferences(0).getString("tenor","").orEmpty()
+  if(key.isBlank()){errors.add("Tenor requiere clave API");return}
+  try{
+   val j=JSONObject(fetch("https://tenor.googleapis.com/v2/search?key="+enc(key)+"&q="+enc(q)+"&limit=24&media_filter=gif,tinygif"))
+   val arr=j.optJSONArray("results")?:return
+   for(i in 0 until arr.length()){
+    val x=arr.getJSONObject(i);val formats=x.optJSONObject("media_formats")?:continue
+    val gif=formats.optJSONObject("tinygif")?:formats.optJSONObject("gif")?:continue
+    val preview=gif.optString("preview").ifBlank{gif.optString("url")}
+    val url=gif.optString("url")
+    if(preview.startsWith("https://"))results.add(Item(x.optString("content_description","GIF"),preview,preview,"Tenor · fotograma"))
+   }
+  }catch(e:Exception){errors.add("Tenor: ${e.message}")}
+ }
  private fun discoverTelegram(term:String){
   info.text="Buscando paquetes públicos de Telegram para: $term…"
   Thread{
    try{
-    val searchUrl="https://www.bing.com/search?format=rss&q="+enc("site:t.me/addstickers/ "+term+" stickers")
+    val searchUrl="https://www.bing.com/search?format=rss&q="+enc("site:t.me/addstickers/ "+term+" sticker pack")
     val xml=fetchLarge(searchUrl,500_000)
     val rx=Regex("(?i)(?:https?://)?(?:t\\.me|telegram\\.me)/addstickers/([A-Za-z0-9_]+)")
     val found=rx.findAll(xml.replace("&amp;","&")).map{it.groupValues[1]}.distinct().take(20).toList()
@@ -154,7 +197,7 @@ class MainActivity : Activity() {
   Thread{
    var ok=0;var fail=0
    for(item in items){
-    try{storeSticker(bytes(item.url,10_000_000));ok++}catch(_:Exception){fail++}
+    try{storeSticker(bytes(item.url,10_000_000),false);ok++}catch(_:Exception){fail++}
     val done=ok+fail
     ui.post{info.text="Telegram: $done/${items.size} · guardados $ok · errores $fail"}
    }
@@ -178,7 +221,7 @@ class MainActivity : Activity() {
   Thread{try{val data=bytes(item.thumb,5_000_000);val bmp=BitmapFactory.decodeByteArray(data,0,data.size);ui.post{viewer.setImageBitmap(bmp)}}catch(_:Exception){}}.start()
  }
  private fun convert(url:String){info.text="Convirtiendo a sticker…";Thread{try{storeSticker(bytes(url,10_000_000))}catch(e:Exception){ui.post{info.text="Error: ${e.message}"}}}.start()}
- private fun storeSticker(data:ByteArray){
+ private fun storeSticker(data:ByteArray,autoInstall:Boolean=true){
   val original=BitmapFactory.decodeByteArray(data,0,data.size)?:throw Exception("Formato no compatible")
   val bitmap=Bitmap.createBitmap(512,512,Bitmap.Config.ARGB_8888)
   val canvas=Canvas(bitmap);canvas.drawColor(Color.TRANSPARENT,PorterDuff.Mode.CLEAR)
@@ -204,7 +247,7 @@ class MainActivity : Activity() {
   }
   ui.post{
    info.text="Sticker añadido al paquete. Necesitás al menos 3 para instalarlo en WhatsApp."
-   if((dir.listFiles()?.count{it.extension=="webp"}?:0)>=3)installPack()
+   if(autoInstall&&(dir.listFiles()?.count{it.extension=="webp"}?:0)>=3)installPack()
   }
  }
  override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){super.onActivityResult(requestCode,resultCode,data);if(requestCode==17&&resultCode==RESULT_OK){val uri=data?.data?:return;Thread{try{storeSticker(contentResolver.openInputStream(uri)!!.use{it.readBytes()})}catch(e:Exception){ui.post{info.text=e.message}}}.start()}}
