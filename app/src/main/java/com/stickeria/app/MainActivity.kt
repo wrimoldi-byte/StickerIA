@@ -18,7 +18,7 @@ class MainActivity : Activity() {
  private lateinit var info:TextView
  private lateinit var query:EditText
  private lateinit var source:Spinner
- private val names=arrayOf("Todas las fuentes","Wikimedia Commons","Openverse","OpenMoji (emojis)","Telegram (packs públicos)","GIPHY (API)","Tenor (API)")
+ private val names=arrayOf("Todas las fuentes","Wikimedia Commons","Openverse","OpenMoji (emojis)","Telegram (packs públicos)","GIPHY (API)","Tenor (API)","Pinterest (web)","Instagram (web)")
  private data class Item(val title:String,val thumb:String,val url:String,val origin:String)
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
@@ -195,6 +195,13 @@ class MainActivity : Activity() {
   val mode=source.selectedItemPosition
   if(q.contains("t.me/addstickers/")){telegram(q);return}
   if(mode==4){discoverTelegram(q);return}
+  if(mode==7||mode==8){
+   val site=if(mode==7)"https://www.pinterest.com/search/pins/?q=" else "https://www.instagram.com/explore/tags/"
+   val target=if(mode==7)site+enc(q+" sticker") else site+enc(q.replace(" ","").lowercase())+"/"
+   try{startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(target)));info.text="Explorando "+names[mode]+". Guardá la imagen y tocá Crear sticker para importarla."}
+   catch(e:Exception){info.text="No se pudo abrir "+names[mode]+": "+e.message}
+   return
+  }
   Thread{
    val results=mutableListOf<Item>();val errors=mutableListOf<String>()
    val (optimized,engine)=aiQuery(q)
