@@ -1,6 +1,7 @@
 package com.stickeria.app
 import android.content.*
 import android.database.Cursor
+import android.content.res.AssetFileDescriptor
 import android.database.MatrixCursor
 import android.net.Uri
 import android.os.ParcelFileDescriptor
@@ -10,7 +11,7 @@ import java.io.File
 class StickerProvider:ContentProvider(){
  companion object { const val AUTH="com.stickeria.app.stickers"; const val PACK="stickeria_pack" }
  override fun onCreate()=true
- override fun getType(uri:Uri):String?=if(uri.lastPathSegment?.endsWith(".webp")==true)"image/webp" else "vnd.android.cursor.dir/vnd.com.whatsapp.sticker"
+ override fun getType(uri:Uri):String?=when(uri.pathSegments.firstOrNull()){"metadata"->"vnd.android.cursor.dir/vnd.com.whatsapp.sticker_pack";"stickers"->"vnd.android.cursor.dir/vnd.com.whatsapp.sticker";else->if(uri.lastPathSegment?.endsWith(".png")==true)"image/png" else "image/webp"}
  override fun query(uri:Uri,projection:Array<out String>?,selection:String?,selectionArgs:Array<out String>?,sortOrder:String?):Cursor?{
   val parts=uri.pathSegments
   if(parts.isEmpty())return null
@@ -23,13 +24,17 @@ class StickerProvider:ContentProvider(){
   }
  }
  private fun asset(name:String):File{
-  require(name=="tray.png"||name.matches(Regex("sticker_[0-9]+\\.webp")))
+  require(name=="tray.png"||name.matches(Regex("sticker_[0-9]+(_[0-9]+)?\\.webp")))
   return if(name=="tray.png")File(context!!.filesDir,"wa_stickers/tray.png") else File(context!!.filesDir,"wa_stickers/$name")
  }
  override fun openFile(uri:Uri,mode:String):ParcelFileDescriptor?{
   val name=uri.lastPathSegment?:return null
   val file=asset(name)
   return if(file.exists())ParcelFileDescriptor.open(file,ParcelFileDescriptor.MODE_READ_ONLY) else null
+ }
+ override fun openAssetFile(uri:Uri,mode:String):AssetFileDescriptor?{
+  val fd=openFile(uri,mode)?:return null
+  return AssetFileDescriptor(fd,0,AssetFileDescriptor.UNKNOWN_LENGTH)
  }
  override fun insert(uri:Uri,values:ContentValues?):Uri?=null
  override fun delete(uri:Uri,selection:String?,selectionArgs:Array<out String>?):Int=0
