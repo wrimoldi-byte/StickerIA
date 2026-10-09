@@ -194,7 +194,7 @@ class MainActivity : Activity() {
      }else{
       info.text="${found.size} paquetes encontrados en la web. Elegí uno para importar."
       found.forEach{name->
-       val btn=Button(this).apply{text="📦 "+name.replace("_"," ");isAllCaps=false;setOnClickListener{list.removeAllViews();telegram("https://t.me/addstickers/"+name)}}
+       val btn=TextView(this).apply{text="📦 "+name.replace("_"," ");textSize=16f;setTextColor(Color.WHITE);setPadding(20,20,20,20);setOnClickListener{list.removeAllViews();telegram("https://t.me/addstickers/"+name)}}
        list.addView(btn)
       }
      }
@@ -245,10 +245,10 @@ class MainActivity : Activity() {
   }.start()
  }
  private fun add(item:Item){
-  val box=LinearLayout(this).apply{orientation=1;setPadding(12,12,12,12);setBackgroundColor(Color.WHITE)}
+  val box=LinearLayout(this).apply{orientation=1;setPadding(14,14,14,14);background=android.graphics.drawable.GradientDrawable().apply{setColor(Color.rgb(29,32,52));cornerRadius=22f}}
   val img=ImageView(this).apply{layoutParams=LinearLayout.LayoutParams(-1,330);scaleType=ImageView.ScaleType.FIT_CENTER}
-  img.setOnClickListener { preview(item) };box.addView(img);box.addView(TextView(this).apply{text=item.title+" · "+item.origin;maxLines=2})
-  box.addView(Button(this).apply{text="＋ Agregar sticker";setOnClickListener{convert(item.url)}})
+  img.setOnClickListener { preview(item) };box.addView(img);box.addView(TextView(this).apply{text=item.title+" · "+item.origin;maxLines=2;setTextColor(Color.WHITE);textSize=14f;setPadding(4,8,4,8)})
+  box.addView(TextView(this).apply{text="＋ Agregar sticker";gravity=Gravity.CENTER;textSize=15f;setTypeface(null,1);setTextColor(Color.WHITE);background=android.graphics.drawable.GradientDrawable().apply{setColor(Color.rgb(124,82,245));cornerRadius=18f};setOnClickListener{convert(item.url)}},LinearLayout.LayoutParams(-1,50))
   list.addView(box,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=12})
   Thread{try{val data=bytes(item.thumb,5_000_000);val bmp=BitmapFactory.decodeByteArray(data,0,data.size);ui.post{img.setImageBitmap(bmp)}}catch(_:Exception){}}.start()
  }
