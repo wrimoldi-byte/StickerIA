@@ -197,6 +197,26 @@ class MainActivity : Activity() {
   s=s.replace(Regex("(?i)\\b(stickers?|pegatinas?)\\b"),"").trim()
   return s.ifBlank{raw}
  }
+ private fun searchSearx(q:String,results:MutableList<Item>,errors:MutableList<String>){
+  val hosts=listOf("https://searx.be","https://searx.tiekoetter.com","https://search.ononoki.org")
+  for(host in hosts){
+   try{
+    val json=JSONObject(fetchLarge(host+"/search?q="+enc(q)+"&categories=images&format=json&safesearch=1",2_500_000))
+    val a=json.optJSONArray("results")?:continue
+    var count=0
+    for(i in 0 until a.length()){
+     val x=a.optJSONObject(i)?:continue
+     val original=x.optString("img_src").ifBlank{x.optString("url")}
+     val thumb=x.optString("thumbnail_src").ifBlank{x.optString("thumbnail").ifBlank{original}}
+     if(!original.startsWith("https://")||!thumb.startsWith("https://"))continue
+     results.add(Item(x.optString("title",q),thumb,original,"SearXNG · "+x.optString("engine","imágenes")))
+     count++
+     if(count>=45)break
+    }
+    if(count>0)return
+   }catch(e:Exception){errors.add("SearXNG "+host.substringAfter("https://")+": "+(e.message?:"Error").take(45))}
+  }
+ }
  private fun search(){
   val q=query.text.toString().trim();if(q.isBlank()){info.text="Escribí algo para buscar";return}
   list.removeAllViews();info.text="Buscando…"
@@ -208,6 +228,7 @@ class MainActivity : Activity() {
    val (optimized,engine)=if(mode==0)Pair(q,"") else aiQuery(q)
    if(engine.isNotBlank())ui.post{info.text=if(engine=="Gemini"||engine=="Groq")"✦ $engine: buscando «$optimized»…" else engine}
    val searchTerm=stickerKeywords(optimized)
+   if(mode==0)searchSearx(searchTerm+" sticker",results,errors)
    val stickerTerm=searchTerm+" cartoon sticker illustration"
    if(mode==9){searchWebImages(searchTerm,"Google",results,errors)}
    if(mode==10){searchWebImages(searchTerm,"Bing",results,errors)}
