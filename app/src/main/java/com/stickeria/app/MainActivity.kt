@@ -64,7 +64,7 @@ class MainActivity : Activity() {
   page.addView(source,LinearLayout.LayoutParams(1,1))
   info=TextView(this).apply{text="Elegí una categoría o escribí algo para explorar.";textSize=12f;setTextColor(muted);setPadding(0,dp(10),0,dp(10))}
   page.addView(info)
-  val scroll=ScrollView(this).apply{fillViewport=false}
+  val scroll=ScrollView(this).apply{isFillViewport=false}
   list=LinearLayout(this).apply{orientation=1}
   scroll.addView(list)
   page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
