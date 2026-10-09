@@ -18,12 +18,12 @@ class MainActivity : Activity() {
  private lateinit var info:TextView
  private lateinit var query:EditText
  private lateinit var source:Spinner
- private val names=arrayOf("Todas (Wikimedia + Openverse)","Wikimedia Commons","Openverse","Telegram (enlace de pack)")
+ private val names=arrayOf("Todas (Wikimedia + Openverse + OpenMoji)","Wikimedia Commons","Openverse","OpenMoji (emojis)","Telegram (enlace de pack)")
  private data class Item(val title:String,val thumb:String,val url:String,val origin:String)
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
   val root=LinearLayout(this).apply{orientation=1;setPadding(22,30,22,10);setBackgroundColor(Color.rgb(246,247,252))}
-  root.addView(TextView(this).apply{text="✨ StickerIA 0.4";textSize=28f;setTextColor(Color.rgb(30,34,60))})
+  root.addView(TextView(this).apply{text="✨ StickerIA 0.5";textSize=28f;setTextColor(Color.rgb(30,34,60))})
   root.addView(TextView(this).apply{text="Buscá imágenes, importá stickers y convertí a WebP para WhatsApp";textSize=13f})
   query=EditText(this).apply{hint="Memes, gatos o t.me/addstickers/...";setSingleLine(true)}
   root.addView(query)
@@ -47,7 +47,7 @@ class MainActivity : Activity() {
   val q=query.text.toString().trim();if(q.isBlank()){info.text="Escribí algo para buscar";return}
   list.removeAllViews();info.text="Buscando…"
   val mode=source.selectedItemPosition
-  if(mode==3 || q.contains("t.me/addstickers/")){telegram(q);return}
+  if(mode==4 || q.contains("t.me/addstickers/")){telegram(q);return}
   Thread{
    val results=mutableListOf<Item>();val errors=mutableListOf<String>()
    if(mode==0||mode==1)try{
@@ -60,6 +60,22 @@ class MainActivity : Activity() {
     val a=j.optJSONArray("results")
     if(a!=null)for(i in 0 until a.length()){val x=a.getJSONObject(i);val u=x.optString("url");if(u.startsWith("https://"))results.add(Item(x.optString("title","Imagen"),x.optString("thumbnail",u),u,"Openverse · ${x.optString("license")}"))}
    }catch(e:Exception){errors.add("Openverse: ${e.message}")}
+   if(mode==0||mode==3)try{
+    val catalog=org.json.JSONArray(fetchLarge("https://raw.githubusercontent.com/hfg-gmuend/openmoji/master/data/openmoji.json",5_000_000))
+    var added=0
+    for(i in 0 until catalog.length()){
+     val e=catalog.getJSONObject(i)
+     val tags=e.optString("annotation")+" "+e.optString("tags")+" "+e.optString("group")+" "+e.optString("subgroups")
+     if(tags.contains(q,true)){
+      val hex=e.optString("hexcode")
+      if(hex.matches(Regex("[A-F0-9-]+"))){
+       val url="https://cdn.jsdelivr.net/gh/hfg-gmuend/openmoji@master/color/618x618/"+hex+".png"
+       results.add(Item(e.optString("annotation","Emoji"),url,url,"OpenMoji · CC BY-SA 4.0"))
+       added++;if(added>=30)break
+      }
+     }
+    }
+   }catch(e:Exception){errors.add("OpenMoji: ${e.message}")}
    ui.post{info.text="${results.size} resultados"+if(errors.isNotEmpty())" · "+errors.joinToString("; ") else "";results.forEach{add(it)}}
   }.start()
  }
@@ -80,8 +96,26 @@ class MainActivity : Activity() {
     val url="https://api.telegram.org/file/bot"+token+"/"+file
     items.add(Item(s.optString("emoji","Sticker")+" #"+(i+1),url,url,"Telegram"))
    }
-   ui.post{info.text=pack.optString("title",name)+": ${items.size} stickers estáticos · ${skipped} animados no compatibles aún";items.forEach{add(it)}}
+   ui.post{
+    info.text=pack.optString("title",name)+": ${items.size} stickers estáticos · ${skipped} animados omitidos"
+    if(items.isNotEmpty()){
+     list.addView(Button(this).apply{text="⬇ Importar stickers de Telegram al paquete";setOnClickListener{importTelegram(items)}})
+    }
+    items.forEach{add(it)}
+   }
   }catch(e:Exception){ui.post{info.text="Telegram: ${e.message}"}}}.start()
+ }
+ private fun importTelegram(items:List<Item>){
+  info.text="Importando stickers de Telegram…"
+  Thread{
+   var ok=0;var fail=0
+   for(item in items){
+    try{storeSticker(bytes(item.url,10_000_000));ok++}catch(_:Exception){fail++}
+    val done=ok+fail
+    ui.post{info.text="Telegram: $done/${items.size} · guardados $ok · errores $fail"}
+   }
+   ui.post{info.text="Importación terminada: $ok stickers guardados, $fail omitidos. Tocá Agregar paquete a WhatsApp."}
+  }.start()
  }
  private fun add(item:Item){
   val box=LinearLayout(this).apply{orientation=1;setPadding(12,12,12,18);setBackgroundColor(Color.WHITE)}
@@ -99,34 +133,37 @@ class MainActivity : Activity() {
   dialog.show()
   Thread{try{val data=bytes(item.thumb,5_000_000);val bmp=BitmapFactory.decodeByteArray(data,0,data.size);ui.post{viewer.setImageBitmap(bmp)}}catch(_:Exception){}}.start()
  }
- private fun convert(url:String){info.text="Convirtiendo a sticker…";Thread{try{saveAndShare(bytes(url,10_000_000))}catch(e:Exception){ui.post{info.text="Error: ${e.message}"}}}.start()}
- private fun saveAndShare(data:ByteArray){
+ private fun convert(url:String){info.text="Convirtiendo a sticker…";Thread{try{storeSticker(bytes(url,10_000_000))}catch(e:Exception){ui.post{info.text="Error: ${e.message}"}}}.start()}
+ private fun storeSticker(data:ByteArray){
   val original=BitmapFactory.decodeByteArray(data,0,data.size)?:throw Exception("Formato no compatible")
   val bitmap=Bitmap.createBitmap(512,512,Bitmap.Config.ARGB_8888)
   val canvas=Canvas(bitmap);canvas.drawColor(Color.TRANSPARENT,PorterDuff.Mode.CLEAR)
   val scale=minOf(512f/original.width,512f/original.height)
   val w=original.width*scale;val h=original.height*scale
   canvas.drawBitmap(original,null,RectF((512-w)/2,(512-h)/2,(512+w)/2,(512+h)/2),Paint(3))
-  val values=ContentValues().apply{put(MediaStore.Images.Media.DISPLAY_NAME,"StickerIA_${System.currentTimeMillis()}.webp");put(MediaStore.Images.Media.MIME_TYPE,"image/webp");put(MediaStore.Images.Media.RELATIVE_PATH,"Pictures/StickerIA")}
   val dir=File(filesDir,"wa_stickers").apply{mkdirs()}
-  val count=dir.listFiles()?.count{it.name.endsWith(".webp")}?:0
-  val file=File(dir,"sticker_"+System.currentTimeMillis()+".webp")
+  val count=dir.listFiles()?.count{it.extension=="webp"}?:0
+  if(count>=30)throw Exception("El paquete ya tiene 30 stickers")
+  val file=File(dir,"sticker_"+System.currentTimeMillis()+"_"+(0..999).random()+".webp")
   val output=ByteArrayOutputStream()
-  bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY,80,output)
-  if(output.size()>100_000)throw Exception("Sticker supera 100 KB; elegí otra imagen")
+  var quality=85
+  do{
+   output.reset()
+   bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY,quality,output)
+   quality-=10
+  }while(output.size()>100_000&&quality>=25)
+  if(output.size()>100_000)throw Exception("Sticker supera 100 KB")
   file.writeBytes(output.toByteArray())
   if(!File(dir,"tray.png").exists()){
    val icon=Bitmap.createScaledBitmap(bitmap,96,96,true)
    FileOutputStream(File(dir,"tray.png")).use{icon.compress(Bitmap.CompressFormat.PNG,100,it)}
   }
-  val uri=contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values)?:throw Exception("No se pudo crear archivo")
-  contentResolver.openOutputStream(uri)?.use{bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSLESS,100,it)}?:throw Exception("No se pudo guardar")
   ui.post{
    info.text="Sticker añadido al paquete. Necesitás al menos 3 para instalarlo en WhatsApp."
    if((dir.listFiles()?.count{it.extension=="webp"}?:0)>=3)installPack()
   }
  }
- override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){super.onActivityResult(requestCode,resultCode,data);if(requestCode==17&&resultCode==RESULT_OK){val uri=data?.data?:return;Thread{try{saveAndShare(contentResolver.openInputStream(uri)!!.use{it.readBytes()})}catch(e:Exception){ui.post{info.text=e.message}}}.start()}}
+ override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){super.onActivityResult(requestCode,resultCode,data);if(requestCode==17&&resultCode==RESULT_OK){val uri=data?.data?:return;Thread{try{storeSticker(contentResolver.openInputStream(uri)!!.use{it.readBytes()})}catch(e:Exception){ui.post{info.text=e.message}}}.start()}}
  private fun installPack(){
   val dir=File(filesDir,"wa_stickers")
   val count=dir.listFiles()?.count{it.extension=="webp"}?:0
@@ -143,6 +180,7 @@ class MainActivity : Activity() {
  }
  private fun enc(s:String)=URLEncoder.encode(s,"UTF-8")
  private fun fetch(url:String):String=String(bytes(url,3_000_000),Charsets.UTF_8)
+ private fun fetchLarge(url:String,max:Int):String=String(bytes(url,max),Charsets.UTF_8)
  private fun bytes(url:String,limit:Int):ByteArray{
   val c=URL(url).openConnection() as HttpURLConnection;c.connectTimeout=12000;c.readTimeout=18000;c.setRequestProperty("User-Agent","StickerIA/0.3 (Android)")
   try{if(c.responseCode !in 200..299)throw Exception("HTTP ${c.responseCode}");val out=ByteArrayOutputStream();c.inputStream.use{input->val buf=ByteArray(8192);while(true){val n=input.read(buf);if(n<0)break;if(out.size()+n>limit)throw Exception("Archivo demasiado grande");out.write(buf,0,n)}};return out.toByteArray()}finally{c.disconnect()}
