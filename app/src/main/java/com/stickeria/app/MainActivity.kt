@@ -22,19 +22,23 @@ class MainActivity : Activity() {
  private data class Item(val title:String,val thumb:String,val url:String,val origin:String)
  override fun onCreate(savedInstanceState:Bundle?){
   super.onCreate(savedInstanceState)
-  val root=LinearLayout(this).apply{orientation=1;setPadding(22,30,22,10);setBackgroundColor(Color.rgb(246,247,252))}
-  root.addView(TextView(this).apply{text="✨ StickerIA 0.5";textSize=28f;setTextColor(Color.rgb(30,34,60))})
-  root.addView(TextView(this).apply{text="Buscá imágenes, importá stickers y convertí a WebP para WhatsApp";textSize=13f})
-  query=EditText(this).apply{hint="Memes, gatos o t.me/addstickers/...";setSingleLine(true)}
-  root.addView(query)
-  source=Spinner(this);source.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,names);root.addView(source)
-  root.addView(Button(this).apply{text="🔎 Buscar / importar";setOnClickListener{search()}})
-  root.addView(Button(this).apply{text="📷 Crear sticker desde mi galería";setOnClickListener{
-   startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply{type="image/*"},17)
-  }})
-  root.addView(Button(this).apply{text="🟢 Agregar paquete a WhatsApp";setOnClickListener{installPack()}})
-  root.addView(Button(this).apply{text="⚙ Configurar token de bot Telegram";setOnClickListener{configToken()}})
-  info=TextView(this).apply{text="Elegí una fuente y buscá.";setPadding(0,12,0,12)}
+  window.statusBarColor=Color.rgb(20,27,48)
+  window.navigationBarColor=Color.rgb(20,27,48)
+  val root=LinearLayout(this).apply{orientation=1;setPadding(16,12,16,8);setBackgroundColor(Color.rgb(245,247,251))}
+  root.addView(TextView(this).apply{text="StickerIA";textSize=27f;setTypeface(null,1);setTextColor(Color.rgb(24,34,62));setPadding(4,4,4,0)})
+  root.addView(TextView(this).apply{text="Encontrá stickers y agregalos a WhatsApp";textSize=13f;setTextColor(Color.rgb(94,106,128));setPadding(4,0,4,10)})
+  query=EditText(this).apply{hint="Buscar stickers o pegar enlace de Telegram";setSingleLine(true);textSize=16f;setPadding(16,4,16,4);setBackgroundColor(Color.WHITE)}
+  root.addView(query,LinearLayout.LayoutParams(-1,52))
+  source=Spinner(this);source.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,names)
+  root.addView(source,LinearLayout.LayoutParams(-1,46))
+  val actions=LinearLayout(this).apply{orientation=0}
+  actions.addView(Button(this).apply{text="Buscar";setAllCaps=false;setOnClickListener{search()}},LinearLayout.LayoutParams(0,52,1f))
+  actions.addView(Button(this).apply{text="Mi galería";setAllCaps=false;setOnClickListener{startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply{type="image/*"},17)}},LinearLayout.LayoutParams(0,52,1f))
+  root.addView(actions)
+  root.addView(Button(this).apply{text="Agregar mi paquete a WhatsApp";setAllCaps=false;setTextColor(Color.WHITE);setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(21,151,102)));setOnClickListener{installPack()}},LinearLayout.LayoutParams(-1,52))
+  root.addView(TextView(this).apply{text="Telegram";textSize=13f;setTextColor(Color.rgb(94,106,128));setPadding(4,8,0,0)})
+  root.addView(Button(this).apply{text="Configurar acceso a Telegram";setAllCaps=false;setOnClickListener{configToken()}},LinearLayout.LayoutParams(-1,46))
+  info=TextView(this).apply{text="Elegí una fuente y buscá.";textSize=13f;setTextColor(Color.rgb(64,76,100));setPadding(4,8,4,8)}
   root.addView(info)
   val scroll=ScrollView(this);list=LinearLayout(this).apply{orientation=1};scroll.addView(list);root.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
   setContentView(root)
@@ -118,10 +122,10 @@ class MainActivity : Activity() {
   }.start()
  }
  private fun add(item:Item){
-  val box=LinearLayout(this).apply{orientation=1;setPadding(12,12,12,18);setBackgroundColor(Color.WHITE)}
-  val img=ImageView(this).apply{layoutParams=LinearLayout.LayoutParams(-1,480);scaleType=ImageView.ScaleType.FIT_CENTER}
+  val box=LinearLayout(this).apply{orientation=1;setPadding(12,12,12,12);setBackgroundColor(Color.WHITE)}
+  val img=ImageView(this).apply{layoutParams=LinearLayout.LayoutParams(-1,330);scaleType=ImageView.ScaleType.FIT_CENTER}
   img.setOnClickListener { preview(item) };box.addView(img);box.addView(TextView(this).apply{text=item.title+" · "+item.origin;maxLines=2})
-  box.addView(Button(this).apply{text="➕ Guardar en mi paquete WhatsApp";setOnClickListener{convert(item.url)}})
+  box.addView(Button(this).apply{text="＋ Agregar sticker";setOnClickListener{convert(item.url)}})
   list.addView(box,LinearLayout.LayoutParams(-1,-2).apply{bottomMargin=12})
   Thread{try{val data=bytes(item.thumb,5_000_000);val bmp=BitmapFactory.decodeByteArray(data,0,data.size);ui.post{img.setImageBitmap(bmp)}}catch(_:Exception){}}.start()
  }
