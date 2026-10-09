@@ -75,7 +75,7 @@ class MainActivity : Activity() {
    for(i in 0 until minOf(stickers.length(),30)){
     val s=stickers.getJSONObject(i)
     if(s.optBoolean("is_animated")||s.optBoolean("is_video")){skipped++;continue}
-    val file=JSONObject(fetch(base+"getFile?file_id="+enc(s.getString("file_id")))).getJSONObject("result").getJSONObject("result").getString("file_path")
+    val file=JSONObject(fetch(base+"getFile?file_id="+enc(s.getString("file_id")))).getJSONObject("result").getString("file_path")
     val url="https://api.telegram.org/file/bot"+token+"/"+file
     items.add(Item(s.optString("emoji","Sticker")+" #"+(i+1),url,url,"Telegram"))
    }
