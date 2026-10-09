@@ -14,6 +14,7 @@ import java.io.*
 
 class MainActivity : Activity() {
  private val ui=Handler(Looper.getMainLooper())
+ private val imagePool=java.util.concurrent.Executors.newFixedThreadPool(4)
  private lateinit var list:GridLayout
  private lateinit var info:TextView
  private lateinit var query:EditText
@@ -200,13 +201,13 @@ class MainActivity : Activity() {
    val (optimized,engine)=aiQuery(q)
    if(engine.isNotBlank())ui.post{info.text=if(engine=="Gemini"||engine=="Groq")"✦ $engine: buscando «$optimized»…" else engine}
    val searchTerm=optimized
-   val stickerTerm=optimized+" sticker"
-   if(mode==0||mode==9){searchWebImages(searchTerm,"Google",results,errors)}
-   if(mode==0||mode==10){searchWebImages(searchTerm,"Bing",results,errors)}
-   if(mode==0||mode==7){searchIndexedImages(searchTerm,"pinterest.com","Pinterest",results,errors)}
-   if(mode==0||mode==8){searchIndexedImages(searchTerm,"instagram.com","Instagram",results,errors)}
-   if(mode==0||mode==5){searchGiphy(searchTerm,results,errors)}
-   if(mode==0||mode==6){searchTenor(searchTerm,results,errors)}
+   val stickerTerm=optimized
+   if(mode==9){searchWebImages(searchTerm,"Google",results,errors)}
+   if(mode==10){searchWebImages(searchTerm,"Bing",results,errors)}
+   if(mode==7){searchIndexedImages(searchTerm,"pinterest.com","Pinterest",results,errors)}
+   if(mode==8){searchIndexedImages(searchTerm,"instagram.com","Instagram",results,errors)}
+   if(mode==5){searchGiphy(searchTerm,results,errors)}
+   if(mode==6){searchTenor(searchTerm,results,errors)}
    if(mode==0||mode==1)try{
     val u="https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch="+enc(stickerTerm)+"&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url&iiurlwidth=320&format=json"
     val pages=JSONObject(fetch(u)).optJSONObject("query")?.optJSONObject("pages")
@@ -392,11 +393,22 @@ class MainActivity : Activity() {
    setMargins(gap,gap,gap,gap)
   }
   list.addView(box,params)
-  Thread{try{
-   val data=bytes(item.thumb,5_000_000)
-   val bmp=BitmapFactory.decodeByteArray(data,0,data.size)
-   ui.post{img.setImageBitmap(bmp)}
-  }catch(_:Exception){}}.start()
+  imagePool.execute {
+   try{
+    val data=bytes(item.thumb,5_000_000)
+    val bmp=BitmapFactory.decodeByteArray(data,0,data.size)?:throw Exception("No es una imagen")
+    ui.post{img.setImageBitmap(bmp)}
+   }catch(e:Exception){
+    ui.post{
+     img.setBackgroundColor(Color.rgb(47,48,65))
+     img.setImageDrawable(null)
+     val fallback=android.graphics.drawable.GradientDrawable().apply{setColor(Color.rgb(47,48,65));cornerRadius=dp(8).toFloat()}
+     img.background=fallback
+     img.contentDescription="Imagen no disponible: "+(e.message?:"Error")
+     img.setOnClickListener{Toast.makeText(this,"Imagen no disponible",Toast.LENGTH_SHORT).show()}
+    }
+   }
+  }
  }
  private fun preview(item:Item){
   val viewer=ImageView(this).apply{adjustViewBounds=true;scaleType=ImageView.ScaleType.FIT_CENTER;setPadding(12,12,12,12)}
@@ -455,7 +467,7 @@ class MainActivity : Activity() {
  private fun fetch(url:String):String=String(bytes(url,3_000_000),Charsets.UTF_8)
  private fun fetchLarge(url:String,max:Int):String=String(bytes(url,max),Charsets.UTF_8)
  private fun bytes(url:String,limit:Int):ByteArray{
-  val c=URL(url).openConnection() as HttpURLConnection;c.connectTimeout=12000;c.readTimeout=18000;c.setRequestProperty("User-Agent","StickerIA/0.3 (Android)")
+  val c=URL(url).openConnection() as HttpURLConnection;c.connectTimeout=12000;c.readTimeout=18000;c.setRequestProperty("User-Agent","Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36");c.setRequestProperty("Accept","image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5")
   try{if(c.responseCode !in 200..299)throw Exception("HTTP ${c.responseCode}");val out=ByteArrayOutputStream();c.inputStream.use{input->val buf=ByteArray(8192);while(true){val n=input.read(buf);if(n<0)break;if(out.size()+n>limit)throw Exception("Archivo demasiado grande");out.write(buf,0,n)}};return out.toByteArray()}finally{c.disconnect()}
  }
 }
