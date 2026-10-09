@@ -17,11 +17,40 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Compilar APK
+      - name: Preparar firma privada
+        env:
+          KEYSTORE_BASE64: ${{ secrets.STICKERIA_KEYSTORE_BASE64 }}
+          STICKERIA_STORE_PASSWORD: ${{ secrets.STICKERIA_STORE_PASSWORD }}
+          STICKERIA_KEY_PASSWORD: ${{ secrets.STICKERIA_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$STICKERIA_STORE_PASSWORD" ] && [ -n "$STICKERIA_KEY_PASSWORD" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/stickeria-release.jks"
+            echo "STICKERIA_KEYSTORE_PATH=$RUNNER_TEMP/stickeria-release.jks" >> "$GITHUB_ENV"
+            echo "STICKERIA_STORE_PASSWORD=$STICKERIA_STORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "STICKERIA_KEY_PASSWORD=$STICKERIA_KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "STICKERIA_KEY_ALIAS=stickeria" >> "$GITHUB_ENV"
+            echo "SIGNED_RELEASE=true" >> "$GITHUB_ENV"
+          else
+            echo "SIGNED_RELEASE=false" >> "$GITHUB_ENV"
+            echo "::notice::Faltan secretos de firma: se compila APK debug, que no garantiza actualizaciones."
+          fi
+      - name: Compilar APK firmado para actualizaciones
+        if: env.SIGNED_RELEASE == 'true'
+        run: gradle --no-daemon assembleRelease
+      - name: Compilar APK de prueba sin firma permanente
+        if: env.SIGNED_RELEASE != 'true'
         run: gradle --no-daemon assembleDebug
-      - name: Subir APK
+      - name: Subir APK firmado
+        if: env.SIGNED_RELEASE == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: StickerIA-APK
+          name: StickerIA-APK-actualizable
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+      - name: Subir APK de prueba
+        if: env.SIGNED_RELEASE != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: StickerIA-APK-debug-no-actualizable
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
