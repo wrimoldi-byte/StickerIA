@@ -73,6 +73,11 @@ class MainActivity : Activity() {
   nav.addView(button("▣ Mis packs",Color.rgb(48,52,78)){showMyPack()},LinearLayout.LayoutParams(0,dp(49),1f).apply{leftMargin=dp(8)})
   nav.addView(button("⚙ Ajustes",Color.rgb(48,52,78)){showSettings()},LinearLayout.LayoutParams(0,dp(49),1f).apply{leftMargin=dp(8)})
   page.addView(nav)
+  page.setOnApplyWindowInsetsListener { view, insets ->
+   val bars=insets.getInsets(android.view.WindowInsets.Type.systemBars())
+   view.setPadding(dp(18),bars.top+dp(12),dp(18),bars.bottom+dp(8))
+   insets
+  }
   setContentView(page)
  }
  private fun showSources(){
@@ -120,13 +125,13 @@ class MainActivity : Activity() {
   val failures=mutableListOf<String>()
   if(g.isNotBlank())try{
    val payload=JSONObject().put("contents",org.json.JSONArray().put(JSONObject().put("parts",org.json.JSONArray().put(JSONObject().put("text",instruction)))))
-   val result=JSONObject(postJson("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",payload.toString(),mapOf("x-goog-api-key" to g)))
+   val result=JSONObject(postJson("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",payload.toString(),mapOf("x-goog-api-key" to g)))
    val text=result.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text").trim()
    if(text.isNotBlank())return Pair(text.take(100),"Gemini")
   }catch(e:Exception){failures.add("Gemini: "+(e.message?:"Error desconocido").take(110))}
   val groq=p.getString("groq_key","").orEmpty()
   if(groq.isNotBlank())try{
-   val payload=JSONObject().put("model","llama-3.1-8b-instant").put("temperature",0.2).put("max_tokens",48)
+   val payload=JSONObject().put("model","llama-3.3-70b-versatile").put("temperature",0.2).put("max_tokens",48)
     .put("messages",org.json.JSONArray().put(JSONObject().put("role","user").put("content",instruction)))
    val result=JSONObject(postJson("https://api.groq.com/openai/v1/chat/completions",payload.toString(),mapOf("Authorization" to "Bearer "+groq)))
    val text=result.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content").trim()
@@ -176,7 +181,7 @@ class MainActivity : Activity() {
    if(mode==0||mode==5){searchGiphy(searchTerm,results,errors)}
    if(mode==0||mode==6){searchTenor(searchTerm,results,errors)}
    if(mode==0||mode==1)try{
-    val u="https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch="+enc(searchTerm)+"&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url&iiurlwidth=320&format=json"
+    val u="https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch="+enc(searchTerm+" (sticker OR cartoon OR emoji OR illustration)")+"&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url&iiurlwidth=320&format=json"
     val pages=JSONObject(fetch(u)).optJSONObject("query")?.optJSONObject("pages")
     if(pages!=null){val it=pages.keys();while(it.hasNext()){val page=pages.getJSONObject(it.next());val im=page.optJSONArray("imageinfo")?.optJSONObject(0)?:continue;val original=im.optString("url");if(original.startsWith("https://")&&original.matches(Regex("(?i).*\\.(png|jpe?g|webp)(\\?.*)?$")))results.add(Item(page.optString("title").removePrefix("File:"),im.optString("thumburl",original),original,"Wikimedia"))}}
    }catch(e:Exception){errors.add("Wikimedia: ${e.message}")}
