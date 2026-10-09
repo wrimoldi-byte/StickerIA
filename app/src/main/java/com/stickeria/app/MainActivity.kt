@@ -87,11 +87,15 @@ class MainActivity : Activity() {
   val token=getPreferences(0).getString("token","")?:""
   if(token.isBlank()){info.text="Configurá primero tu token de bot Telegram (@BotFather).";return}
   val name=q.substringAfter("addstickers/",q).substringBefore("?").substringBefore("/").trim()
-  if(!name.matches(Regex("[A-Za-z0-9_]{1,100}"))){info.text="Pegá un enlace válido t.me/addstickers/Nombre";return}
+  if(!name.matches(Regex("[A-Za-z0-9_]{1,100}"))){
+   info.text="Telegram no busca por palabra. Pegá el enlace completo t.me/addstickers/NombreDelPack"
+   return
+  }
   Thread{try{
+   ui.post{info.text="Conectando con Telegram…"}
    val base="https://api.telegram.org/bot"+token+"/"
    val response=JSONObject(fetch(base+"getStickerSet?name="+enc(name)))
-   if(!response.optBoolean("ok"))throw Exception(response.optString("description"))
+   if(!response.optBoolean("ok"))throw Exception("Telegram: "+response.optString("description"))
    val pack=response.getJSONObject("result");val stickers=pack.getJSONArray("stickers");val items=mutableListOf<Item>();var skipped=0
    for(i in 0 until minOf(stickers.length(),30)){
     val s=stickers.getJSONObject(i)
@@ -107,7 +111,7 @@ class MainActivity : Activity() {
     }
     items.forEach{add(it)}
    }
-  }catch(e:Exception){ui.post{info.text="Telegram: ${e.message}"}}}.start()
+  }catch(e:Exception){ui.post{info.text="Error de importación: ${e.message}"}}}.start()
  }
  private fun importTelegram(items:List<Item>){
   info.text="Importando stickers de Telegram…"
