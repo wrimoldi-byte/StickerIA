@@ -190,6 +190,13 @@ class MainActivity : Activity() {
   val field=EditText(this).apply{hint="Token de @BotFather";setSingleLine(true)}
   AlertDialog.Builder(this).setTitle("Telegram Bot API").setMessage("El token se guarda solo en este teléfono. No lo compartas ni lo subas a GitHub.").setView(field).setPositiveButton("Guardar"){_,_->getPreferences(0).edit().putString("token",field.text.toString().trim()).apply();info.text="Token guardado localmente"}.setNegativeButton("Cancelar",null).show()
  }
+ private fun stickerKeywords(raw:String):String {
+  var s=raw.lowercase(java.util.Locale.ROOT).trim()
+  val words=mapOf("perros" to "dog","perro" to "dog","gatos" to "cat","gato" to "cat","gatitos" to "kitten","cachorros" to "puppy","cachorro" to "puppy","memes" to "meme","amor" to "love","risa" to "laughing","enojado" to "angry","feliz" to "happy","triste" to "sad","cumpleaños" to "birthday","buenos dias" to "good morning","buenas noches" to "good night")
+  for((from,to) in words) s=s.replace(Regex("(?<![\\p{L}])"+Regex.escape(from)+"(?![\\p{L}])"),to)
+  s=s.replace(Regex("(?i)\\b(stickers?|pegatinas?)\\b"),"").trim()
+  return s.ifBlank{raw}
+ }
  private fun search(){
   val q=query.text.toString().trim();if(q.isBlank()){info.text="Escribí algo para buscar";return}
   list.removeAllViews();info.text="Buscando…"
@@ -198,23 +205,23 @@ class MainActivity : Activity() {
   if(mode==4){discoverTelegram(q);return}
   Thread{
    val results=mutableListOf<Item>();val errors=mutableListOf<String>()
-   val (optimized,engine)=aiQuery(q)
+   val (optimized,engine)=if(mode==0)Pair(q,"") else aiQuery(q)
    if(engine.isNotBlank())ui.post{info.text=if(engine=="Gemini"||engine=="Groq")"✦ $engine: buscando «$optimized»…" else engine}
-   val searchTerm=optimized
-   val stickerTerm=optimized
-   if(mode==0||mode==9){searchWebImages(searchTerm,"Google",results,errors)}
-   if(mode==0||mode==10){searchWebImages(searchTerm,"Bing",results,errors)}
+   val searchTerm=stickerKeywords(optimized)
+   val stickerTerm=searchTerm+" cartoon sticker illustration"
+   if(mode==9){searchWebImages(searchTerm,"Google",results,errors)}
+   if(mode==10){searchWebImages(searchTerm,"Bing",results,errors)}
    if(mode==7){searchIndexedImages(searchTerm,"pinterest.com","Pinterest",results,errors)}
    if(mode==8){searchIndexedImages(searchTerm,"instagram.com","Instagram",results,errors)}
    if(mode==5){searchGiphy(searchTerm,results,errors)}
    if(mode==6){searchTenor(searchTerm,results,errors)}
    if(mode==0||mode==1)try{
-    val u="https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch="+enc(stickerTerm)+"&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url&iiurlwidth=320&format=json"
+    val u="https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch="+enc(stickerTerm)+"&gsrnamespace=6&gsrlimit=40&prop=imageinfo&iiprop=url&iiurlwidth=320&format=json"
     val pages=JSONObject(fetch(u)).optJSONObject("query")?.optJSONObject("pages")
     if(pages!=null){val it=pages.keys();while(it.hasNext()){val page=pages.getJSONObject(it.next());val im=page.optJSONArray("imageinfo")?.optJSONObject(0)?:continue;val original=im.optString("url");if(original.startsWith("https://")&&original.matches(Regex("(?i).*\\.(png|jpe?g|webp)(\\?.*)?$")))results.add(Item(page.optString("title").removePrefix("File:"),im.optString("thumburl",original),original,"Wikimedia"))}}
    }catch(e:Exception){errors.add("Wikimedia: ${e.message}")}
    if(mode==0||mode==2)try{
-    val j=JSONObject(fetch("https://api.openverse.org/v1/images/?q="+enc(stickerTerm)+"&page_size=20"))
+    val j=JSONObject(fetch("https://api.openverse.org/v1/images/?q="+enc(stickerTerm)+"&page_size=40"))
     val a=j.optJSONArray("results")
     if(a!=null)for(i in 0 until a.length()){val x=a.getJSONObject(i);val u=x.optString("url");if(u.startsWith("https://"))results.add(Item(x.optString("title","Imagen"),x.optString("thumbnail",u),u,"Openverse · ${x.optString("license")}"))}
    }catch(e:Exception){errors.add("Openverse: ${e.message}")}
@@ -234,7 +241,9 @@ class MainActivity : Activity() {
      }
     }
    }catch(e:Exception){errors.add("OpenMoji: ${e.message}")}
-   ui.post{info.text=(if(engine=="Gemini"||engine=="Groq")"✦ $engine · " else if(engine.isNotBlank())engine+" · " else "")+"${results.size} resultados"+if(errors.isNotEmpty())" · "+errors.joinToString("; ") else "";results.forEach{add(it)}}
+   val seen=HashSet<String>()
+   val unique=results.filter{seen.add(it.url)}
+   ui.post{info.text=(if(engine=="Gemini"||engine=="Groq")"✦ $engine · " else if(engine.isNotBlank())engine+" · " else "")+"${unique.size} resultados"+if(errors.isNotEmpty())" · "+errors.joinToString("; ") else "";unique.forEach{add(it)}}
   }.start()
  }
  private fun searchWebImages(q:String,engine:String,results:MutableList<Item>,errors:MutableList<String>){
