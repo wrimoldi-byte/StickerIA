@@ -8,6 +8,7 @@ import android.net.Uri
 import android.provider.MediaStore
 import android.view.*
 import android.widget.*
+import android.webkit.*
 import org.json.JSONObject
 import java.net.*
 import java.io.*
@@ -48,6 +49,7 @@ class MainActivity : Activity() {
   quick.addView(button("✦ Explorar",purple){search()},LinearLayout.LayoutParams(0,dp(48),1f))
   quick.addView(button("＋ Crear sticker",Color.rgb(58,63,89)){startActivityForResult(Intent(Intent.ACTION_GET_CONTENT).apply{type="image/*"},17)},LinearLayout.LayoutParams(0,dp(48),1f).apply{leftMargin=dp(8)})
   searchCard.addView(quick)
+  searchCard.addView(button("🌐 Buscar en Internet",Color.rgb(58,63,89)){openWebSearch()},LinearLayout.LayoutParams(-1,dp(44)).apply{topMargin=dp(9)})
   page.addView(searchCard,LinearLayout.LayoutParams(-1,-2).apply{topMargin=dp(18)})
   val categories=HorizontalScrollView(this).apply{isHorizontalScrollBarEnabled=false}
   val chips=LinearLayout(this).apply{orientation=0;setPadding(0,dp(12),0,dp(12))}
