@@ -51,7 +51,8 @@ class MainActivity : Activity() {
   val q=query.text.toString().trim();if(q.isBlank()){info.text="Escribí algo para buscar";return}
   list.removeAllViews();info.text="Buscando…"
   val mode=source.selectedItemPosition
-  if(mode==4 || q.contains("t.me/addstickers/")){telegram(q);return}
+  if(q.contains("t.me/addstickers/")){telegram(q);return}
+  if(mode==4){discoverTelegram(q);return}
   Thread{
    val results=mutableListOf<Item>();val errors=mutableListOf<String>()
    if(mode==0||mode==1)try{
@@ -81,6 +82,29 @@ class MainActivity : Activity() {
     }
    }catch(e:Exception){errors.add("OpenMoji: ${e.message}")}
    ui.post{info.text="${results.size} resultados"+if(errors.isNotEmpty())" · "+errors.joinToString("; ") else "";results.forEach{add(it)}}
+  }.start()
+ }
+ private fun discoverTelegram(term:String){
+  info.text="Buscando paquetes públicos de Telegram para: $term…"
+  Thread{
+   try{
+    val searchUrl="https://www.bing.com/search?format=rss&q="+enc("site:t.me/addstickers/ "+term+" stickers")
+    val xml=fetchLarge(searchUrl,500_000)
+    val rx=Regex("(?i)(?:https?://)?(?:t\\.me|telegram\\.me)/addstickers/([A-Za-z0-9_]+)")
+    val found=rx.findAll(xml.replace("&amp;","&")).map{it.groupValues[1]}.distinct().take(20).toList()
+    ui.post{
+     list.removeAllViews()
+     if(found.isEmpty()){
+      info.text="No encontré packs públicos para '$term'. Probá otro término o pegá un enlace t.me/addstickers/..."
+     }else{
+      info.text="${found.size} paquetes encontrados en la web. Elegí uno para importar."
+      found.forEach{name->
+       val btn=Button(this).apply{text="📦 "+name.replace("_"," ");setAllCaps=false;setOnClickListener{list.removeAllViews();telegram("https://t.me/addstickers/"+name)}}
+       list.addView(btn)
+      }
+     }
+    }
+   }catch(e:Exception){ui.post{info.text="No se pudo buscar packs públicos: ${e.message}. Pegá un enlace de Telegram."}}
   }.start()
  }
  private fun telegram(q:String){
