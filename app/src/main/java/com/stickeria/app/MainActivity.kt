@@ -132,7 +132,7 @@ class MainActivity : Activity() {
      methods!=null&&(0 until methods.length()).any{i->methods.optString(i)=="generateContent"}
     }
    }.map{it.optString(if(gemini)"name" else "id").removePrefix("models/")}
-   val preferred=if(gemini)listOf("gemini-2.0-flash","gemini-2.5-flash-lite","gemini-2.5-flash") else listOf("llama-3.1-8b-instant","llama-3.3-70b-versatile")
+   val preferred=if(gemini)listOf("gemini-2.5-flash","gemini-2.0-flash","gemini-2.5-flash-lite") else listOf("llama-3.3-70b-versatile","llama-3.1-8b-instant")
    return preferred.firstOrNull{it in names} ?: names.firstOrNull{if(gemini)it.contains("flash") else it.contains("llama")&&!it.contains("guard")}.orEmpty()
   }finally{conn.disconnect()}
  }
@@ -202,8 +202,8 @@ class MainActivity : Activity() {
    if(engine.isNotBlank())ui.post{info.text=if(engine=="Gemini"||engine=="Groq")"✦ $engine: buscando «$optimized»…" else engine}
    val searchTerm=optimized
    val stickerTerm=optimized
-   if(mode==9){searchWebImages(searchTerm,"Google",results,errors)}
-   if(mode==10){searchWebImages(searchTerm,"Bing",results,errors)}
+   if(mode==0||mode==9){searchWebImages(searchTerm,"Google",results,errors)}
+   if(mode==0||mode==10){searchWebImages(searchTerm,"Bing",results,errors)}
    if(mode==7){searchIndexedImages(searchTerm,"pinterest.com","Pinterest",results,errors)}
    if(mode==8){searchIndexedImages(searchTerm,"instagram.com","Instagram",results,errors)}
    if(mode==5){searchGiphy(searchTerm,results,errors)}
@@ -239,19 +239,25 @@ class MainActivity : Activity() {
  }
  private fun searchWebImages(q:String,engine:String,results:MutableList<Item>,errors:MutableList<String>){
   try{
-   val target=if(engine=="Google")"https://www.google.com/search?tbm=isch&q="+enc(q) else "https://www.bing.com/images/search?q="+enc(q)
-   val html=fetchLarge(target,2_500_000)
+   val target=if(engine=="Google")"https://www.google.com/search?tbm=isch&hl=es&q="+enc(q+" sticker png") else "https://www.bing.com/images/search?q="+enc(q+" sticker png")+"&first=1"
+   val html=fetchLarge(target,3_000_000)
    val links=LinkedHashSet<String>()
-   val rx=Regex("""https?[^"<> ]+?\\.(?:jpg|jpeg|png|webp)(?:\\?[^"<> ]*)?""",RegexOption.IGNORE_CASE)
-   rx.findAll(html).forEach{links.add(it.value)}
-   for(raw in links){
-    val url=raw.replace("&amp;","&").replace("\\u003d","=").replace("\\u0026","&").replace("\\/","/")
-    if(url.startsWith("https://")&&url.length<1800&&!url.contains("google.com/images/branding")&&!url.contains("bing.com/rp/")){
-     results.add(Item(q,url,url,engine+" Imágenes"))
-     if(results.size>=80)break
-    }
+   val decoded=html.replace("&quot;","\"").replace("&amp;","&").replace("&#39;","'")
+    .replace("\\u003d","=").replace("\\u0026","&").replace("\\/","/")
+   if(engine=="Bing"){
+    Regex("""murl\s*[:=]\s*["'](https?[^"']+)""",RegexOption.IGNORE_CASE).findAll(decoded).forEach{links.add(it.groupValues[1])}
    }
-   if(links.isEmpty())errors.add("$engine: sin enlaces de imágenes recuperables")
+   Regex("""https?[^"<>\s\\]+?\.(?:jpg|jpeg|png|webp)(?:\?[^"<>\s\\]*)?""",RegexOption.IGNORE_CASE)
+    .findAll(decoded).forEach{links.add(it.value)}
+   var added=0
+   for(raw in links){
+    val url=raw.trim().replace("&amp;","&")
+    if(!url.startsWith("https://")||url.length>1600||url.contains("google.com/images/branding")||url.contains("bing.com/rp/")||url.contains("gstatic.com"))continue
+    results.add(Item(q,url,url,engine+" Imágenes"))
+    added++
+    if(added>=24)break
+   }
+   if(added==0)errors.add("$engine: no se pudieron obtener imágenes (el buscador puede bloquear el acceso)")
   }catch(e:Exception){errors.add("$engine: "+(e.message?:"Error"))}
  }
  private fun searchIndexedImages(q:String,domain:String,label:String,results:MutableList<Item>,errors:MutableList<String>){
