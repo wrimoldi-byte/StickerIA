@@ -117,6 +117,24 @@ class MainActivity : Activity() {
     info.text=if(enabled.isChecked)"IA activada: Gemini → Groq → búsqueda normal" else "IA desactivada"
    }.setNegativeButton("Cancelar",null).show()
  }
+ private fun activeModel(url:String,key:String,gemini:Boolean):String {
+  val conn=URL(url).openConnection() as HttpURLConnection
+  conn.connectTimeout=12000;conn.readTimeout=12000
+  if(!gemini)conn.setRequestProperty("Authorization","Bearer "+key)
+  try{
+   if(conn.responseCode !in 200..299)throw Exception("Modelos HTTP "+conn.responseCode)
+   val root=JSONObject(conn.inputStream.bufferedReader().use{it.readText()})
+   val arr=root.optJSONArray(if(gemini)"models" else "data")?:return ""
+   val names=(0 until arr.length()).map{arr.getJSONObject(it)}.filter{
+    if(!gemini)true else {
+     val methods=it.optJSONArray("supportedGenerationMethods")
+     methods!=null&&(0 until methods.length()).any{i->methods.optString(i)=="generateContent"}
+    }
+   }.map{it.optString(if(gemini)"name" else "id").removePrefix("models/")}
+   val preferred=if(gemini)listOf("gemini-2.5-flash","gemini-2.5-flash-lite","gemini-2.0-flash") else listOf("llama-3.3-70b-versatile","llama-3.1-8b-instant")
+   return preferred.firstOrNull{it in names} ?: names.firstOrNull{if(gemini)it.contains("flash") else it.contains("llama")&&!it.contains("guard")}.orEmpty()
+  }finally{conn.disconnect()}
+ }
  private fun aiQuery(q:String):Pair<String,String>{
   val p=getPreferences(0)
   if(!p.getBoolean("ai_enabled",false))return Pair(q,"")
@@ -125,13 +143,17 @@ class MainActivity : Activity() {
   val failures=mutableListOf<String>()
   if(g.isNotBlank())try{
    val payload=JSONObject().put("contents",org.json.JSONArray().put(JSONObject().put("parts",org.json.JSONArray().put(JSONObject().put("text",instruction)))))
-   val result=JSONObject(postJson("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",payload.toString(),mapOf("x-goog-api-key" to g)))
+   val model=activeModel("https://generativelanguage.googleapis.com/v1beta/models?key="+enc(g),g,true)
+   if(model.isBlank())throw Exception("No hay modelos Gemini disponibles")
+   val result=JSONObject(postJson("https://generativelanguage.googleapis.com/v1beta/models/"+model+":generateContent",payload.toString(),mapOf("x-goog-api-key" to g)))
    val text=result.getJSONArray("candidates").getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text").trim()
    if(text.isNotBlank())return Pair(text.take(100),"Gemini")
   }catch(e:Exception){failures.add("Gemini: "+(e.message?:"Error desconocido").take(110))}
   val groq=p.getString("groq_key","").orEmpty()
   if(groq.isNotBlank())try{
-   val payload=JSONObject().put("model","llama-3.3-70b-versatile").put("temperature",0.2).put("max_tokens",48)
+   val model=activeModel("https://api.groq.com/openai/v1/models",groq,false)
+   if(model.isBlank())throw Exception("No hay modelos Groq disponibles")
+   val payload=JSONObject().put("model",model).put("temperature",0.2).put("max_tokens",48)
     .put("messages",org.json.JSONArray().put(JSONObject().put("role","user").put("content",instruction)))
    val result=JSONObject(postJson("https://api.groq.com/openai/v1/chat/completions",payload.toString(),mapOf("Authorization" to "Bearer "+groq)))
    val text=result.getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content").trim()
@@ -178,15 +200,16 @@ class MainActivity : Activity() {
    val (optimized,engine)=aiQuery(q)
    if(engine.isNotBlank())ui.post{info.text=if(engine=="Gemini"||engine=="Groq")"✦ $engine: buscando «$optimized»…" else engine}
    val searchTerm=optimized
+   val stickerTerm=optimized+" cartoon sticker transparent illustration"
    if(mode==0||mode==5){searchGiphy(searchTerm,results,errors)}
    if(mode==0||mode==6){searchTenor(searchTerm,results,errors)}
-   if(mode==0||mode==1)try{
-    val u="https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch="+enc(searchTerm+" (sticker OR cartoon OR emoji OR illustration)")+"&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url&iiurlwidth=320&format=json"
+   if(mode==1)try{
+    val u="https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch="+enc(stickerTerm)+"&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url&iiurlwidth=320&format=json"
     val pages=JSONObject(fetch(u)).optJSONObject("query")?.optJSONObject("pages")
     if(pages!=null){val it=pages.keys();while(it.hasNext()){val page=pages.getJSONObject(it.next());val im=page.optJSONArray("imageinfo")?.optJSONObject(0)?:continue;val original=im.optString("url");if(original.startsWith("https://")&&original.matches(Regex("(?i).*\\.(png|jpe?g|webp)(\\?.*)?$")))results.add(Item(page.optString("title").removePrefix("File:"),im.optString("thumburl",original),original,"Wikimedia"))}}
    }catch(e:Exception){errors.add("Wikimedia: ${e.message}")}
    if(mode==0||mode==2)try{
-    val j=JSONObject(fetch("https://api.openverse.org/v1/images/?q="+enc(searchTerm)+"&page_size=20"))
+    val j=JSONObject(fetch("https://api.openverse.org/v1/images/?q="+enc(stickerTerm)+"&page_size=20"))
     val a=j.optJSONArray("results")
     if(a!=null)for(i in 0 until a.length()){val x=a.getJSONObject(i);val u=x.optString("url");if(u.startsWith("https://"))results.add(Item(x.optString("title","Imagen"),x.optString("thumbnail",u),u,"Openverse · ${x.optString("license")}"))}
    }catch(e:Exception){errors.add("Openverse: ${e.message}")}
