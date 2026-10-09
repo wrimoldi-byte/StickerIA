@@ -238,7 +238,7 @@ class MainActivity : Activity() {
   try{
    // Public search index only; no authentication, cookies, or private content.
    val html=fetchLarge("https://www.bing.com/images/search?q="+enc("site:"+domain+" "+q)+"&form=HDRSC3",2_000_000)
-   val rx=Regex("""(?:murl|imgurl)(?:&quot;|\\\\")?\\s*:\\s*(?:&quot;|\\\\")([^"<\\s]+)""",RegexOption.IGNORE_CASE)
+   val rx=Regex("""(?:murl|imgurl)[^\\n]{0,30}?(https?[^"\\\\ <]+)""",RegexOption.IGNORE_CASE)
    val candidates=rx.findAll(html).map{it.groupValues[1].replace("&amp;","&").replace("\\u0026","&")}.distinct().take(24).toList()
    for(url in candidates){
     if(url.startsWith("https://")&&url.length<1800)results.add(Item(q,url,url,label+" · índice público"))
