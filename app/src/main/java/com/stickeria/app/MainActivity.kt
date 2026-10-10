@@ -20,6 +20,12 @@ class MainActivity : Activity() {
  private lateinit var info:TextView
  private lateinit var query:EditText
  private lateinit var source:Spinner
+ private var pageNumber=1
+ private var loadingMore=false
+ private var moreAvailable=false
+ private var activeSearch=""
+ private var searchGeneration=0
+ private val shownImages=HashSet<String>()
  private val names=arrayOf("Todas las fuentes","Wikimedia Commons","Openverse","OpenMoji (emojis)","Telegram (packs públicos)","GIPHY (API)","Tenor (API)","Pinterest (web)","Instagram (web)","Google Imágenes","Bing Imágenes")
  private data class Item(val title:String,val thumb:String,val url:String,val origin:String)
  override fun onCreate(savedInstanceState:Bundle?){
@@ -70,6 +76,12 @@ class MainActivity : Activity() {
   val scroll=ScrollView(this).apply{isFillViewport=false}
   list=GridLayout(this).apply{columnCount=3;alignmentMode=GridLayout.ALIGN_BOUNDS}
   scroll.addView(list)
+  scroll.viewTreeObserver.addOnScrollChangedListener{
+   if(source.selectedItemPosition==0&&moreAvailable&&!loadingMore&&activeSearch.isNotBlank()&&scroll.getChildAt(0)!=null){
+    val remaining=scroll.getChildAt(0).height-(scroll.scrollY+scroll.height)
+    if(remaining<resources.displayMetrics.density*650)loadNextSerper()
+   }
+  }
   page.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
   val nav=LinearLayout(this).apply{orientation=0;setPadding(0,dp(8),0,dp(4))}
   nav.addView(button("⌕ Buscar",purple){query.requestFocus()},LinearLayout.LayoutParams(0,dp(49),1f))
@@ -150,7 +162,30 @@ class MainActivity : Activity() {
     info.text="Serper configurado. Buscá imágenes con Explorar."
    }.setNegativeButton("Cancelar",null).show()
  }
- private fun searchSerper(q:String,results:MutableList<Item>,errors:MutableList<String>){
+ private fun loadNextSerper(){
+  if(loadingMore||!moreAvailable)return
+  loadingMore=true
+  val q=activeSearch
+  val page=pageNumber
+  val generation=searchGeneration
+  info.text="Cargando más imágenes…"
+  Thread{
+   val found=mutableListOf<Item>()
+   val errors=mutableListOf<String>()
+   searchSerper(q,page,found,errors)
+   ui.post{
+    if(generation!=searchGeneration)return@post
+    loadingMore=false
+    if(errors.isNotEmpty()){moreAvailable=false;info.text=errors.joinToString("; ");return@post}
+    val fresh=found.filter{shownImages.add(it.url)}
+    fresh.forEach{add(it)}
+    pageNumber++
+    moreAvailable=found.isNotEmpty()&&fresh.isNotEmpty()&&pageNumber<=20
+    info.text=if(moreAvailable)"${shownImages.size} imágenes · Deslizá para ver más" else "${shownImages.size} imágenes · Fin de resultados"
+   }
+  }.start()
+ }
+ private fun searchSerper(q:String,page:Int,results:MutableList<Item>,errors:MutableList<String>){
   val key=getPreferences(0).getString("serper_key","").orEmpty()
   if(key.isBlank()){errors.add("Configurá Serper en Ajustes para buscar imágenes reales");return}
   try{
@@ -159,7 +194,7 @@ class MainActivity : Activity() {
    conn.doOutput=true
    conn.setRequestProperty("X-API-KEY",key)
    conn.setRequestProperty("Content-Type","application/json")
-   val payload=JSONObject().put("q",q).put("gl","ar").put("hl","es").put("num",40).toString()
+   val payload=JSONObject().put("q",q).put("gl","ar").put("hl","es").put("num",20).put("page",page).toString()
    try{
     conn.outputStream.use{it.write(payload.toByteArray(Charsets.UTF_8))}
     if(conn.responseCode !in 200..299)throw Exception("HTTP "+conn.responseCode)
@@ -289,6 +324,7 @@ class MainActivity : Activity() {
   }
  }
  private fun search(){
+  searchGeneration++;moreAvailable=false;loadingMore=false;pageNumber=1;shownImages.clear()
   val q=query.text.toString().trim();if(q.isBlank()){info.text="Escribí algo para buscar";return}
   list.removeAllViews();info.text="Buscando…"
   val mode=source.selectedItemPosition
@@ -301,7 +337,7 @@ class MainActivity : Activity() {
    val searchTerm=stickerKeywords(optimized)
    // Public SearXNG instances currently reject automated JSON image requests; disabled by default.
    val stickerTerm=searchTerm+" cartoon sticker illustration"
-   if(mode==0){searchSerper(q,results,errors)}
+   if(mode==0){searchSerper(q,1,results,errors)}
    if(mode==9){searchWebImages(searchTerm,"Google",results,errors)}
    if(mode==10){searchWebImages(searchTerm,"Bing",results,errors)}
    if(mode==7){searchIndexedImages(searchTerm,"pinterest.com","Pinterest",results,errors)}
@@ -336,7 +372,11 @@ class MainActivity : Activity() {
    }catch(e:Exception){errors.add("OpenMoji: ${e.message}")}
    val seen=HashSet<String>()
    val unique=results.filter{seen.add(it.url)}
-   ui.post{info.text=(if(engine=="Gemini"||engine=="Groq")"✦ $engine · " else if(engine.isNotBlank())engine+" · " else "")+"${unique.size} resultados"+if(errors.isNotEmpty())" · "+errors.joinToString("; ") else "";unique.forEach{add(it)}}
+   val generation=searchGeneration
+   ui.post{if(generation!=searchGeneration)return@post
+    if(mode==0&&getPreferences(0).getString("serper_key","").orEmpty().isNotBlank()&&errors.none{it.startsWith("Serper:")}){activeSearch=q;moreAvailable=results.isNotEmpty();pageNumber=2}
+    unique.forEach{shownImages.add(it.url)}
+    info.text=(if(engine=="Gemini"||engine=="Groq")"✦ $engine · " else if(engine.isNotBlank())engine+" · " else "")+"${unique.size} resultados"+if(errors.isNotEmpty())" · "+errors.joinToString("; ") else "";unique.forEach{add(it)}}
   }.start()
  }
  private fun searchWebImages(q:String,engine:String,results:MutableList<Item>,errors:MutableList<String>){
