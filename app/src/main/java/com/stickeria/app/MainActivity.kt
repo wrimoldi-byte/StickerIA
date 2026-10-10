@@ -696,7 +696,7 @@ class MainActivity : Activity() {
    }
   }
   AlertDialog.Builder(this).setTitle("Arrastrá un rectángulo sobre un dibujo")
-   .setView(view).setPositiveButton("Guardar recorte"){_,_->
+   .setView(android.widget.FrameLayout(this).apply{addView(view,android.widget.FrameLayout.LayoutParams(-1,(resources.displayMetrics.heightPixels*0.55f).toInt()))}).setPositiveButton("Guardar recorte"){_,_->
     val piece=view.crop()
     if(piece==null){info.text="No seleccionaste una zona";return@setPositiveButton}
     Thread{try{val out=ByteArrayOutputStream();piece.compress(Bitmap.CompressFormat.PNG,100,out);storeSticker(out.toByteArray())}catch(e:Exception){ui.post{info.text=e.message}}}.start()
