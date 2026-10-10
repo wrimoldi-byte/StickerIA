@@ -324,7 +324,7 @@ class MainActivity : Activity() {
   }
  }
  private fun search(){
-  searchGeneration++;moreAvailable=false;loadingMore=false;pageNumber=1;shownImages.clear()
+  searchGeneration++;moreAvailable=false;loadingMore=false;pageNumber=1;activeSearch="";shownImages.clear()
   val q=query.text.toString().trim();if(q.isBlank()){info.text="Escribí algo para buscar";return}
   list.removeAllViews();info.text="Buscando…"
   val mode=source.selectedItemPosition
