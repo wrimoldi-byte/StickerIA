@@ -566,7 +566,144 @@ class MainActivity : Activity() {
   dialog.show()
   Thread{try{val data=bytes(item.thumb,5_000_000);val bmp=BitmapFactory.decodeByteArray(data,0,data.size);ui.post{viewer.setImageBitmap(bmp)}}catch(_:Exception){}}.start()
  }
- private fun convert(url:String){info.text="Convirtiendo a sticker…";Thread{try{storeSticker(bytes(url,10_000_000))}catch(e:Exception){ui.post{info.text="Error: ${e.message}"}}}.start()}
+ private fun convert(url:String){info.text="Descargando imagen…";Thread{try{val data=bytes(url,10_000_000);ui.post{editSticker(data)}}catch(e:Exception){ui.post{info.text="Error: ${e.message}"}}}.start()}
+
+ private fun editSticker(data:ByteArray){
+  val bitmap=BitmapFactory.decodeByteArray(data,0,data.size)
+  if(bitmap==null){info.text="Imagen no compatible";return}
+  val preview=ImageView(this).apply{setImageBitmap(bitmap);adjustViewBounds=true;scaleType=ImageView.ScaleType.FIT_CENTER}
+  val frame=LinearLayout(this).apply{orientation=1;setPadding(20,10,20,10)}
+  frame.addView(TextView(this).apply{text="Elegí cómo convertir la imagen. Separar todos funciona mejor con fondos blancos y dibujos separados.";textSize=13f})
+  frame.addView(preview,LinearLayout.LayoutParams(-1,(resources.displayMetrics.heightPixels*0.38f).toInt()))
+  AlertDialog.Builder(this).setTitle("Editor de stickers").setView(frame)
+   .setPositiveButton("Separar todos"){_,_->splitStickers(bitmap)}
+   .setNeutralButton("Recortar uno"){_,_->manualStickerCrop(bitmap)}
+   .setNegativeButton("Imagen completa"){_,_->Thread{try{storeSticker(data)}catch(e:Exception){ui.post{info.text=e.message}}}.start()}
+   .show()
+ }
+ private fun removeWhite(source:Bitmap):Bitmap{
+  val w=source.width;val h=source.height
+  val pixels=IntArray(w*h);source.getPixels(pixels,0,w,0,0,w,h)
+  for(i in pixels.indices){
+   val p=pixels[i];val r=Color.red(p);val g=Color.green(p);val b=Color.blue(p)
+   val low=minOf(r,g,b)
+   val alpha=when{low>=248->0;low>=220->((248-low)*255/28).coerceIn(0,255);else->255}
+   pixels[i]=Color.argb(alpha,r,g,b)
+  }
+  return Bitmap.createBitmap(pixels,w,h,Bitmap.Config.ARGB_8888)
+ }
+ private fun splitStickers(bitmap:Bitmap){
+  info.text="Detectando dibujos…"
+  Thread{
+   try{
+    val maxSide=900
+    val factor=minOf(1f,maxSide.toFloat()/maxOf(bitmap.width,bitmap.height))
+    val scaled=Bitmap.createScaledBitmap(bitmap,maxOf(1,(bitmap.width*factor).toInt()),maxOf(1,(bitmap.height*factor).toInt()),true)
+    val cut=removeWhite(scaled)
+    val w=cut.width;val h=cut.height
+    val pixels=IntArray(w*h);cut.getPixels(pixels,0,w,0,0,w,h)
+    val occupied=BooleanArray(w*h)
+    for(i in pixels.indices)occupied[i]=Color.alpha(pixels[i])>100
+    // Dilate the foreground slightly to reconnect outlines separated by thin white gaps.
+    val expanded=BooleanArray(w*h)
+    for(y in 0 until h)for(x in 0 until w){
+     val i=y*w+x
+     if(!occupied[i])continue
+     for(dy in -2..2)for(dx in -2..2){
+      val xx=x+dx;val yy=y+dy
+      if(xx in 0 until w&&yy in 0 until h)expanded[yy*w+xx]=true
+     }
+    }
+    val seen=BooleanArray(w*h)
+    val queue=IntArray(w*h)
+    val regions=mutableListOf<Rect>()
+    for(i in expanded.indices){
+     if(!expanded[i]||seen[i])continue
+     var head=0;var tail=1;queue[0]=i;seen[i]=true
+     var left=w;var top=h;var right=0;var bottom=0;var area=0
+     while(head<tail){
+      val v=queue[head++];val x=v%w;val y=v/w;area++
+      if(x<left)left=x;if(x>right)right=x
+      if(y<top)top=y;if(y>bottom)bottom=y
+      val neighbors=intArrayOf(if(x>0)v-1 else -1,if(x<w-1)v+1 else -1,if(y>0)v-w else -1,if(y<h-1)v+w else -1)
+      for(n in neighbors)if(n>=0&&expanded[n]&&!seen[n]){seen[n]=true;queue[tail++]=n}
+     }
+     if(area>100&&right-left>20&&bottom-top>20)regions.add(Rect(maxOf(0,left-4),maxOf(0,top-4),minOf(w,right+5),minOf(h,bottom+5)))
+    }
+    val candidates=regions.sortedByDescending{it.width()*it.height()}.take(30)
+    val pieces=candidates.map{r->Bitmap.createBitmap(cut,r.left,r.top,r.width(),r.height())}
+    ui.post{showSplitResults(pieces)}
+   }catch(e:Exception){ui.post{info.text="Error al separar: "+e.message}}
+  }.start()
+ }
+ private fun showSplitResults(pieces:List<Bitmap>){
+  if(pieces.isEmpty()){info.text="No encontré dibujos separados. Probá Recortar uno.";return}
+  val panel=LinearLayout(this).apply{orientation=1;setPadding(16,8,16,8)}
+  panel.addView(TextView(this).apply{text="Detecté ${pieces.size} recortes. Seleccioná los que querés guardar.";textSize=14f})
+  val checks=mutableListOf<CheckBox>()
+  for((i,piece) in pieces.withIndex()){
+   val line=LinearLayout(this).apply{orientation=0;gravity=Gravity.CENTER_VERTICAL}
+   val box=CheckBox(this).apply{text="Sticker ${i+1}";isChecked=true}
+   val picture=ImageView(this).apply{setImageBitmap(piece);scaleType=ImageView.ScaleType.FIT_CENTER}
+   line.addView(box,LinearLayout.LayoutParams(0,90,1f))
+   line.addView(picture,LinearLayout.LayoutParams(130,110))
+   checks.add(box);panel.addView(line)
+  }
+  val scroll=ScrollView(this).apply{addView(panel)}
+  AlertDialog.Builder(this).setTitle("Stickers separados").setView(scroll)
+   .setPositiveButton("Guardar seleccionados"){_,_->
+    val selected=pieces.filterIndexed{i,_->checks[i].isChecked}
+    Thread{
+     var saved=0
+     for(piece in selected){
+      try{val out=ByteArrayOutputStream();piece.compress(Bitmap.CompressFormat.PNG,100,out);storeSticker(out.toByteArray(),false);saved++}catch(_:Exception){}
+     }
+     ui.post{info.text="Se guardaron $saved de ${selected.size} stickers"}
+    }.start()
+   }.setNegativeButton("Cancelar",null).show()
+ }
+ private fun manualStickerCrop(bitmap:Bitmap){
+  val view=object:View(this){
+   private val paint=Paint(3)
+   private var startX=0f;private var startY=0f;private var endX=0f;private var endY=0f
+   private val dest=RectF()
+   override fun onDraw(canvas:Canvas){
+    super.onDraw(canvas)
+    val scale=minOf(width.toFloat()/bitmap.width,height.toFloat()/bitmap.height)
+    val dw=bitmap.width*scale;val dh=bitmap.height*scale
+    dest.set((width-dw)/2,(height-dh)/2,(width+dw)/2,(height+dh)/2)
+    canvas.drawBitmap(bitmap,null,dest,paint)
+    if(startX!=endX&&startY!=endY){
+     paint.color=Color.MAGENTA;paint.style=Paint.Style.STROKE;paint.strokeWidth=4f
+     canvas.drawRect(startX,startY,endX,endY,paint)
+     paint.style=Paint.Style.FILL;paint.color=Color.WHITE
+    }
+   }
+   override fun onTouchEvent(e:android.view.MotionEvent):Boolean{
+    when(e.actionMasked){
+     android.view.MotionEvent.ACTION_DOWN->{startX=e.x;startY=e.y;endX=e.x;endY=e.y;invalidate();return true}
+     android.view.MotionEvent.ACTION_MOVE,android.view.MotionEvent.ACTION_UP->{endX=e.x;endY=e.y;invalidate();return true}
+    }
+    return true
+   }
+   fun crop():Bitmap?{
+    if(kotlin.math.abs(endX-startX)<15||kotlin.math.abs(endY-startY)<15)return null
+    val l=((minOf(startX,endX)-dest.left)*bitmap.width/dest.width()).toInt().coerceIn(0,bitmap.width-1)
+    val t=((minOf(startY,endY)-dest.top)*bitmap.height/dest.height()).toInt().coerceIn(0,bitmap.height-1)
+    val r=((maxOf(startX,endX)-dest.left)*bitmap.width/dest.width()).toInt().coerceIn(l+1,bitmap.width)
+    val b=((maxOf(startY,endY)-dest.top)*bitmap.height/dest.height()).toInt().coerceIn(t+1,bitmap.height)
+    return removeWhite(Bitmap.createBitmap(bitmap,l,t,r-l,b-t))
+   }
+  }
+  AlertDialog.Builder(this).setTitle("Arrastrá un rectángulo sobre un dibujo")
+   .setView(view).setPositiveButton("Guardar recorte"){_,_->
+    val piece=view.crop()
+    if(piece==null){info.text="No seleccionaste una zona";return@setPositiveButton}
+    Thread{try{val out=ByteArrayOutputStream();piece.compress(Bitmap.CompressFormat.PNG,100,out);storeSticker(out.toByteArray())}catch(e:Exception){ui.post{info.text=e.message}}}.start()
+   }.setNegativeButton("Cancelar",null).create().also{
+    it.show();it.window?.setLayout(-1,(resources.displayMetrics.heightPixels*0.75f).toInt())
+   }
+ }
  private fun storeSticker(data:ByteArray,autoInstall:Boolean=true){
   val original=BitmapFactory.decodeByteArray(data,0,data.size)?:throw Exception("Formato no compatible")
   val bitmap=Bitmap.createBitmap(512,512,Bitmap.Config.ARGB_8888)
@@ -596,7 +733,7 @@ class MainActivity : Activity() {
    if(autoInstall&&(dir.listFiles()?.count{it.extension=="webp"}?:0)>=3)installPack()
   }
  }
- override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){super.onActivityResult(requestCode,resultCode,data);if(requestCode==17&&resultCode==RESULT_OK){val uri=data?.data?:return;Thread{try{storeSticker(contentResolver.openInputStream(uri)!!.use{it.readBytes()})}catch(e:Exception){ui.post{info.text=e.message}}}.start()}}
+ override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?){super.onActivityResult(requestCode,resultCode,data);if(requestCode==17&&resultCode==RESULT_OK){val uri=data?.data?:return;Thread{try{val bytes=contentResolver.openInputStream(uri)!!.use{it.readBytes()};ui.post{editSticker(bytes)}}catch(e:Exception){ui.post{info.text=e.message}}}.start()}}
  private fun installPack(){
   val dir=File(filesDir,"wa_stickers")
   val count=dir.listFiles()?.count{it.extension=="webp"}?:0
