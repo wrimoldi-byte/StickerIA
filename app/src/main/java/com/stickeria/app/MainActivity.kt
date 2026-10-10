@@ -129,16 +129,51 @@ class MainActivity : Activity() {
    .setPositiveButton("Agregar a WhatsApp"){_,_->installPack()}.setNegativeButton("Cerrar",null).show()
  }
  private fun showSettings(){
-  val options=arrayOf("Configurar IA: Gemini / Groq","Buscar packs de Telegram","Configurar token de Telegram","Configurar GIPHY y Tenor","Agregar paquete a WhatsApp")
+  val options=arrayOf("Configurar Serper (imágenes)","Configurar IA: Gemini / Groq","Buscar packs de Telegram","Configurar token de Telegram","Configurar GIPHY y Tenor","Agregar paquete a WhatsApp")
   AlertDialog.Builder(this).setTitle("Ajustes y herramientas").setItems(options){_,which->
    when(which){
-    0->configAI()
-    1->{val q=query.text.toString().trim();if(q.isBlank())info.text="Escribí una búsqueda primero" else{list.removeAllViews();discoverTelegram(q)}}
-    2->configToken()
-    3->configGifKeys()
-    4->installPack()
+    0->configSerper()
+    1->configAI()
+    2->{val q=query.text.toString().trim();if(q.isBlank())info.text="Escribí una búsqueda primero" else{list.removeAllViews();discoverTelegram(q)}}
+    3->configToken()
+    4->configGifKeys()
+    5->installPack()
    }
   }.setNegativeButton("Cerrar",null).show()
+ }
+ private fun configSerper(){
+  val field=EditText(this).apply{hint="API Key de Serper";setSingleLine(true);setText(getPreferences(0).getString("serper_key",""))}
+  AlertDialog.Builder(this).setTitle("Google Imágenes con Serper")
+   .setMessage("Pegá tu clave de Serper. Se guarda en este teléfono, no en GitHub. La búsqueda usa tus créditos gratuitos.")
+   .setView(field).setPositiveButton("Guardar"){_,_->
+    getPreferences(0).edit().putString("serper_key",field.text.toString().trim()).apply()
+    info.text="Serper configurado. Buscá imágenes con Explorar."
+   }.setNegativeButton("Cancelar",null).show()
+ }
+ private fun searchSerper(q:String,results:MutableList<Item>,errors:MutableList<String>){
+  val key=getPreferences(0).getString("serper_key","").orEmpty()
+  if(key.isBlank()){errors.add("Configurá Serper en Ajustes para buscar imágenes reales");return}
+  try{
+   val conn=URL("https://google.serper.dev/images").openConnection() as HttpURLConnection
+   conn.requestMethod="POST";conn.connectTimeout=12000;conn.readTimeout=18000
+   conn.doOutput=true
+   conn.setRequestProperty("X-API-KEY",key)
+   conn.setRequestProperty("Content-Type","application/json")
+   val payload=JSONObject().put("q",q).put("gl","ar").put("hl","es").put("num",40).toString()
+   try{
+    conn.outputStream.use{it.write(payload.toByteArray(Charsets.UTF_8))}
+    if(conn.responseCode !in 200..299)throw Exception("HTTP "+conn.responseCode)
+    val root=JSONObject(conn.inputStream.bufferedReader().use{it.readText()})
+    val images=root.optJSONArray("images")?:throw Exception("Sin imágenes en la respuesta")
+    for(i in 0 until images.length()){
+     val item=images.optJSONObject(i)?:continue
+     val original=item.optString("imageUrl")
+     val thumb=item.optString("thumbnailUrl").ifBlank{original}
+     if(original.startsWith("https://")&&thumb.startsWith("https://"))
+      results.add(Item(item.optString("title",q),thumb,original,"Google · Serper"))
+    }
+   }finally{conn.disconnect()}
+  }catch(e:Exception){errors.add("Serper: "+(e.message?:"Error"))}
  }
  private fun configAI(){
   val prefs=getPreferences(0)
@@ -266,13 +301,14 @@ class MainActivity : Activity() {
    val searchTerm=stickerKeywords(optimized)
    // Public SearXNG instances currently reject automated JSON image requests; disabled by default.
    val stickerTerm=searchTerm+" cartoon sticker illustration"
+   if(mode==0){searchSerper(q,results,errors)}
    if(mode==9){searchWebImages(searchTerm,"Google",results,errors)}
    if(mode==10){searchWebImages(searchTerm,"Bing",results,errors)}
    if(mode==7){searchIndexedImages(searchTerm,"pinterest.com","Pinterest",results,errors)}
    if(mode==8){searchIndexedImages(searchTerm,"instagram.com","Instagram",results,errors)}
    if(mode==5){searchGiphy(searchTerm,results,errors)}
    if(mode==6){searchTenor(searchTerm,results,errors)}
-   if(mode==0||mode==1)try{
+   if((mode==0&&results.isEmpty())||mode==1)try{
     val u="https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch="+enc(stickerTerm)+"&gsrnamespace=6&gsrlimit=40&prop=imageinfo&iiprop=url&iiurlwidth=320&format=json"
     val pages=JSONObject(fetch(u)).optJSONObject("query")?.optJSONObject("pages")
     if(pages!=null){val it=pages.keys();while(it.hasNext()){val page=pages.getJSONObject(it.next());val im=page.optJSONArray("imageinfo")?.optJSONObject(0)?:continue;val original=im.optString("url");if(original.startsWith("https://")&&original.matches(Regex("(?i).*\\.(png|jpe?g|webp)(\\?.*)?$")))results.add(Item(page.optString("title").removePrefix("File:"),im.optString("thumburl",original),original,"Wikimedia"))}}
@@ -282,7 +318,7 @@ class MainActivity : Activity() {
     val a=j.optJSONArray("results")
     if(a!=null)for(i in 0 until a.length()){val x=a.getJSONObject(i);val u=x.optString("url");if(u.startsWith("https://"))results.add(Item(x.optString("title","Imagen"),x.optString("thumbnail",u),u,"Openverse · ${x.optString("license")}"))}
    }catch(e:Exception){errors.add("Openverse: ${e.message}")}
-   if(mode==0||mode==3)try{
+   if((mode==0&&results.isEmpty())||mode==3)try{
     val catalog=org.json.JSONArray(fetchLarge("https://raw.githubusercontent.com/hfg-gmuend/openmoji/master/data/openmoji.json",5_000_000))
     var added=0
     for(i in 0 until catalog.length()){
